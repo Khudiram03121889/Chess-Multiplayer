@@ -17,6 +17,7 @@ import {
   CrimsonText_400Regular_Italic,
   CrimsonText_600SemiBold
 } from '@expo-google-fonts/crimson-text';
+import { setAudioModeAsync } from 'expo-audio';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -68,6 +69,17 @@ export default function App() {
     CrimsonText_400Regular_Italic,
     CrimsonText_600SemiBold,
   });
+
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      allowsRecording: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'mixWithOthers',
+    }).catch((err) => {
+      console.warn("Failed to set audio mode:", err);
+    });
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {

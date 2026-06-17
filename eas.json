@@ -24,6 +24,9 @@
       "credentialsSource": "local",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
       }
     }
   },
