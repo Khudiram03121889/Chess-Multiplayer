@@ -38,7 +38,7 @@ if os.path.exists(proj_path):
         print("Changing swift-syntax requirement to exactVersion 600.0.1 in project.pbxproj")
         return prefix + new_req + suffix
 
-    new_content, count_syn = re.subn(pattern_syn, new_content, flags=re.MULTILINE)
+    new_content, count_syn = re.subn(pattern_syn, replacer_syn, new_content, flags=re.MULTILINE)
 
     if count_coll > 0 or count_syn > 0:
         with open(proj_path, "w", encoding="utf-8") as f:
