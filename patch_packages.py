@@ -179,15 +179,12 @@ for root, dirs, files in os.walk("node_modules"):
                     )
                     content_modified = True
                     
-                if file == "HostFunctionClosure.h" and "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator)" in content and "static HostFunctionClosure* create" not in content:
-                    content = content.replace(
-                        "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {};",
-                        "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {}\n  static HostFunctionClosure* create(Context context, Closure closure, Deallocator deallocator) { return new HostFunctionClosure(context, closure, deallocator); }"
-                    )
-                    # Handle the semi-colon typo in their original header if it differs
-                    content = content.replace(
-                        "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {}",
-                        "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {}\n  static HostFunctionClosure* create(Context context, Closure closure, Deallocator deallocator) { return new HostFunctionClosure(context, closure, deallocator); }"
+                if file == "HostFunctionClosure.h" and "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator)" in content and "static HostFunctionClosure" not in content:
+                    # Clean up any trailing semi-colons and add the factory method
+                    content = re.sub(
+                        r"explicit HostFunctionClosure\(Context context, Closure closure, Deallocator deallocator\) : RetainedSwiftPointer\(context, deallocator\), _closure\(closure\) \{\};?",
+                        "explicit HostFunctionClosure(Context context, Closure closure, Deallocator deallocator) : RetainedSwiftPointer(context, deallocator), _closure(closure) {}\\n  static HostFunctionClosure *_Nonnull create(Context context, Closure closure, Deallocator deallocator) { return new HostFunctionClosure(context, closure, deallocator); }",
+                        content
                     )
                     content_modified = True
 
