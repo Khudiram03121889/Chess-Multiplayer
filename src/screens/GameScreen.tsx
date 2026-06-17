@@ -1,18 +1,21 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert, Share, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/theme';
+import { useTheme, getGlowStyle } from '../theme/theme';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../navigation/AppNavigator';
-import { auth, db } from '../firebase/config';
+import { auth, db, getServerTime } from '../firebase/config';
 import { ref, onValue, update, set, get } from 'firebase/database';
 import ChessBoard from '../components/ChessBoard';
 import SplashingHearts from '../components/SplashingHearts';
 import ChatPanel from '../components/ChatPanel';
 import { Chess, Square } from 'chess.js';
 import { useWebRTC, RTCView } from '../game/webrtc';
+import { getFallbackBotMove, squareFromUci } from '../game/botEngine';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
+import { WebView } from 'react-native-webview';
+import { createAudioPlayer } from 'expo-audio';
 
 type GameScreenRouteProp = RouteProp<RootStackParamList, 'Game'>;
 
@@ -83,6 +86,50 @@ const serializeBoard = (c: Chess) => {
   return board.map(row => row.map(sq => sq ? `${sq.color}${sq.type}` : ''));
 };
 
+const STOCKFISH_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    window.onerror = function(message) {
+      window.ReactNativeWebView.postMessage("ERROR: " + message);
+    };
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js" onerror="window.ReactNativeWebView.postMessage('ERROR: Stockfish script failed to load')"></script>
+  <script>
+    var engine;
+    var ready = false;
+    try {
+      engine = typeof STOCKFISH === "function" ? STOCKFISH() : (typeof Stockfish === "function" ? Stockfish() : new Worker("https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js"));
+      engine.onmessage = function(event) {
+        var line = typeof event === "string" ? event : event.data;
+        if (line) {
+          window.ReactNativeWebView.postMessage(line);
+          if (!ready && line === "readyok") {
+            ready = true;
+            window.ReactNativeWebView.postMessage("READY");
+          }
+        }
+      };
+      engine.postMessage("uci");
+      engine.postMessage("isready");
+    } catch(e) {
+      window.ReactNativeWebView.postMessage("ERROR: " + e.message);
+    }
+    
+    document.addEventListener("message", function(event) {
+      if (engine) engine.postMessage(event.data);
+    });
+    window.addEventListener("message", function(event) {
+      if (engine) engine.postMessage(event.data);
+    });
+  </script>
+</head>
+<body></body>
+</html>
+`;
+
 export default function GameScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
@@ -91,6 +138,9 @@ export default function GameScreen() {
   const route = useRoute<GameScreenRouteProp>();
   const gameId = route.params?.gameId || 'demo-game';
   const themeColor = (route.params as any)?.theme || 'neon';
+  const isBotMode = (route.params as any)?.isBotMode || false;
+  const botColorSelection = (route.params as any)?.botColorSelection || 'random';
+  const showLegalMovesParam = (route.params as any)?.showLegalMoves ?? true;
 
   const [chess] = useState(new Chess());
   const [fen, setFen] = useState(chess.fen());
@@ -111,12 +161,43 @@ export default function GameScreen() {
   const [yappingPaused, setYappingPaused] = useState(false);
   const [quickConvo, setQuickConvo] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
   const myColorRef = useRef<'w' | 'b' | null>(null);
+  const webViewRef = useRef<WebView>(null);
+  const isEngineReady = useRef(false);
+  const engineFallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingBotFen = useRef<string | null>(null);
   const gameHistorySaved = useRef<boolean>(false);
   const lastLoveRef = useRef<number>(0);
+  const lastUndoRequestRef = useRef<number>(0);
+  const lastUndoResponseRef = useRef<number>(0);
   const matchHistoryRecorded = useRef(false);
+  const chatMsgCountRef = useRef(0);
   const timeControlRef = useRef<string>('10m');
-  const { localStream, remoteStream, cameraEnabled, toggleCamera } = useWebRTC(gameId, myColor);
+  const { localStream, remoteStream, cameraEnabled, audioMuted, toggleCamera, toggleAudioMute } = useWebRTC(isBotMode ? null : gameId, myColor);
+
+  const playSound = async (type: 'move' | 'capture' | 'check' | 'end') => {
+    if (!soundEnabled) return;
+    try {
+      let soundAsset;
+      switch(type) {
+        case 'move': soundAsset = require('../../assets/sounds/move.mp3'); break;
+        case 'capture': soundAsset = require('../../assets/sounds/capture.mp3'); break;
+        case 'check': soundAsset = require('../../assets/sounds/check.mp3'); break;
+        case 'end': soundAsset = require('../../assets/sounds/end.mp3'); break;
+      }
+      const player = createAudioPlayer(soundAsset);
+      player.play();
+      // Dispose after playback finishes (approximate duration + buffer)
+      setTimeout(() => {
+        try { player.release(); } catch (_e) { /* already disposed */ }
+      }, 3000);
+    } catch (error) {
+      console.warn("Failed to play sound", error);
+    }
+  };
 
   const checkEndgame = (c: Chess) => {
     if (c.isCheckmate()) {
@@ -138,10 +219,32 @@ export default function GameScreen() {
     return 600;
   };
 
+  // Bot Mode Init
+  useEffect(() => {
+    if (isBotMode) {
+      clearEngineFallbackTimer();
+      pendingBotFen.current = null;
+      chess.reset();
+      const pColor = botColorSelection === 'random' ? (Math.random() > 0.5 ? 'w' : 'b') : botColorSelection;
+      setMyColor(pColor as 'w' | 'b');
+      myColorRef.current = pColor as 'w' | 'b';
+      setFen(chess.fen());
+      setLastMove(null);
+      setSelectedSquare(null);
+      setLegalTargets([]);
+      setEndgameMessage(null);
+      setShowLegalMoves(showLegalMovesParam);
+      setWhiteTime(600);
+      setBlackTime(600);
+      setOpponentInfo({ name: 'Stockfish Bot', avatarUrl: null });
+      setGameStarted(true);
+    }
+  }, [isBotMode, botColorSelection, chess, showLegalMovesParam]);
+
 
   // Seat claiming and heartbeats
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId || isBotMode) return;
     const user = auth.currentUser;
     if (!user) return;
 
@@ -183,7 +286,7 @@ export default function GameScreen() {
         avatarUri: avatarUrl,
         reunionPartnerEmail: partnerEmail,
         reunionAt: reunionAt,
-        connectedAt: Date.now()
+        connectedAt: getServerTime()
       };
 
       try {
@@ -209,7 +312,7 @@ export default function GameScreen() {
         onValue(seatsRef, (snap) => {
           if (!isMounted) return;
           const seats = snap.val() || {};
-          const isLive = (s: any) => s && s.connectedAt && (Date.now() - s.connectedAt < 30000);
+          const isLive = (s: any) => s && s.connectedAt && (getServerTime() - s.connectedAt < 30000);
 
           setGameStarted(isLive(seats.w) && isLive(seats.b));
 
@@ -251,7 +354,7 @@ export default function GameScreen() {
 
     const heartbeatInterval = setInterval(() => {
       if (isMounted && myColorRef.current) {
-         update(ref(db, `games/${gameId}/seats/${myColorRef.current}`), { connectedAt: Date.now() }).catch(() => {});
+         update(ref(db, `games/${gameId}/seats/${myColorRef.current}`), { connectedAt: getServerTime() }).catch(() => {});
       }
     }, 15000);
 
@@ -264,9 +367,47 @@ export default function GameScreen() {
     };
   }, [gameId]);
 
+  // Listen for chat messages to update unread count
+  useEffect(() => {
+    if (!gameId || isBotMode) return;
+    const chatRef = ref(db, `games/${gameId}/chat`);
+    let isInitialLoad = true;
+    const unsubscribe = onValue(chatRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const msgCount = Object.keys(data).length;
+        if (isInitialLoad) {
+           chatMsgCountRef.current = msgCount;
+           isInitialLoad = false;
+        } else {
+           if (!showChat && msgCount > chatMsgCountRef.current) {
+             setUnreadChatCount(prev => prev + (msgCount - chatMsgCountRef.current));
+           }
+           chatMsgCountRef.current = msgCount;
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [gameId, isBotMode, showChat]);
+
+  // Active Game Tracking
+  useEffect(() => {
+    if (gameStarted && myColor && opponentInfo && !isBotMode) {
+      const user = auth.currentUser;
+      if (user) {
+        set(ref(db, `users/${user.uid}/activeGame`), {
+          id: gameId,
+          opponent: opponentInfo.name,
+          timestamp: getServerTime(),
+          myColor
+        }).catch(() => {});
+      }
+    }
+  }, [gameStarted, myColor, opponentInfo]);
+
   // Sync game state
   useEffect(() => {
-    if (!gameId) return;
+    if (!gameId || isBotMode) return;
     const gameRef = ref(db, `games/${gameId}`);
 
     const unsubscribe = onValue(gameRef, (snap) => {
@@ -320,7 +461,10 @@ export default function GameScreen() {
              
              const user = auth.currentUser;
              if (user) {
-               const endedAt = Date.now();
+               // Clear active game when sync detects game over
+               set(ref(db, `users/${user.uid}/activeGame`), null).catch(() => {});
+
+               const endedAt = getServerTime();
                const baseKey = String(gameId || 'game').replace(/[^A-Za-z0-9_-]/g, '_');
                const historyKey = `${baseKey}_${endedAt}`;
                const wT = state.clocks?.w ?? state.whiteTime ?? whiteTime;
@@ -353,6 +497,36 @@ export default function GameScreen() {
 
         if (state.yappingPaused !== undefined) {
           setYappingPaused(state.yappingPaused);
+        }
+
+        if (state.undoRequest && state.undoRequest.from !== myColor && state.undoRequest.at > lastUndoRequestRef.current) {
+          lastUndoRequestRef.current = state.undoRequest.at;
+          Alert.alert("Undo Request", `${opponentInfo?.name || 'Opponent'} wants to take back their last move. Allow?`, [
+            { text: "Decline", onPress: () => {
+                update(ref(db, `games/${gameId}`), { undoResponse: { from: myColor, allow: false, at: getServerTime() } });
+            }, style: "cancel" },
+            { text: "Allow", onPress: () => {
+                chess.undo();
+                setFen(chess.fen());
+                setLastMove(null);
+                update(ref(db, `games/${gameId}`), {
+                  fen: chess.fen(),
+                  board: serializeBoard(chess),
+                  turn: chess.turn(),
+                  lastMove: null,
+                  undoResponse: { from: myColor, allow: true, at: getServerTime() }
+                });
+            }}
+          ]);
+        }
+
+        if (state.undoResponse && state.undoResponse.from !== myColor && state.undoResponse.at > lastUndoResponseRef.current) {
+          lastUndoResponseRef.current = state.undoResponse.at;
+          if (state.undoResponse.allow) {
+            Alert.alert('Undo Accepted', 'Your opponent allowed the undo.');
+          } else {
+            Alert.alert('Undo Declined', 'Your opponent declined the undo request.');
+          }
         }
       }
     });
@@ -394,6 +568,115 @@ export default function GameScreen() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  const clearEngineFallbackTimer = () => {
+    if (engineFallbackTimer.current) {
+      clearTimeout(engineFallbackTimer.current);
+      engineFallbackTimer.current = null;
+    }
+  };
+
+  const applyBotMove = useCallback((bestMoveUci: string) => {
+    if (!bestMoveUci || bestMoveUci === '(none)' || chess.turn() === myColor || chess.isGameOver()) {
+      pendingBotFen.current = null;
+      return;
+    }
+
+    try {
+      const { from, to, promotion } = squareFromUci(bestMoveUci);
+      const move = chess.move({ from, to, promotion });
+      if (!move) {
+        pendingBotFen.current = null;
+        return;
+      }
+
+      clearEngineFallbackTimer();
+      pendingBotFen.current = null;
+      setFen(chess.fen());
+      setLastMove({ from, to });
+      if (chess.isGameOver()) {
+        playSound('end');
+        const endMsg = checkEndgame(chess);
+        let isWin: boolean | null = null;
+        if (chess.isCheckmate()) {
+          isWin = chess.turn() !== myColor;
+        }
+        handleGameOver(endMsg?.title || 'Game Over', isWin);
+      } else if (chess.inCheck()) {
+        playSound('check');
+      } else if (move.captured) {
+        playSound('capture');
+      } else {
+        playSound('move');
+      }
+    } catch (e) {
+      pendingBotFen.current = null;
+      console.warn('Bot move error', e);
+    }
+  }, [chess, myColor]);
+
+  const runFallbackBot = useCallback(() => {
+    if (!isBotMode || !myColor || chess.isGameOver() || chess.turn() === myColor) {
+      pendingBotFen.current = null;
+      return;
+    }
+
+    const fallbackMove = getFallbackBotMove(chess.fen(), 2);
+    if (fallbackMove) {
+      applyBotMove(fallbackMove);
+    } else {
+      pendingBotFen.current = null;
+    }
+  }, [applyBotMove, chess, isBotMode, myColor]);
+
+  const triggerBot = useCallback((force = false) => {
+    if (!isBotMode || !myColor || chess.isGameOver() || chess.turn() === myColor) return;
+    const currentFen = chess.fen();
+    if (!force && pendingBotFen.current === currentFen) return;
+
+    clearEngineFallbackTimer();
+    pendingBotFen.current = currentFen;
+
+    if (webViewRef.current && isEngineReady.current) {
+      webViewRef.current.postMessage(`position fen ${currentFen}`);
+      webViewRef.current.postMessage('go depth 10');
+      engineFallbackTimer.current = setTimeout(runFallbackBot, 1800);
+    } else {
+      engineFallbackTimer.current = setTimeout(runFallbackBot, 250);
+    }
+  }, [chess, isBotMode, myColor, runFallbackBot]);
+
+  const onWebViewMessage = (event: any) => {
+    const data = event.nativeEvent.data;
+    if (data === 'READY') {
+      isEngineReady.current = true;
+      if (chess.turn() !== myColor) {
+        pendingBotFen.current = null;
+        triggerBot(true); // If bot is white, it should move first
+      }
+      return;
+    }
+
+    if (typeof data === 'string' && data.startsWith('ERROR:')) {
+      console.warn('Stockfish WebView error', data);
+      runFallbackBot();
+      return;
+    }
+    
+    if (typeof data === 'string' && data.startsWith('bestmove')) {
+      const parts = data.split(' ');
+      const bestMoveUci = parts[1];
+      applyBotMove(bestMoveUci);
+    }
+  };
+
+  useEffect(() => {
+    if (isBotMode && gameStarted && myColor && chess.turn() !== myColor && !chess.isGameOver()) {
+      triggerBot();
+    }
+
+    return () => clearEngineFallbackTimer();
+  }, [fen, gameStarted, isBotMode, myColor, triggerBot]);
+
   const handleSquarePress = useCallback((square: Square) => {
     if (!gameStarted) {
       Alert.alert("Waiting", "Waiting for opponent to join.");
@@ -434,6 +717,14 @@ export default function GameScreen() {
           }
 
           // Broadcast to Firebase with full Web-compatible schema!
+          if (isBotMode) {
+             setFen(chess.fen());
+             if (!isOver) {
+                 setTimeout(() => triggerBot(), 100);
+             }
+             return;
+          }
+
           const history = chess.history({ verbose: true });
           let lastMoveArr: [number, number, number, number] | null = null;
           if (history.length > 0) {
@@ -452,7 +743,7 @@ export default function GameScreen() {
               lastCapture = {
                 type: last.captured,
                 color: last.color === 'w' ? 'b' : 'w',
-                at: Date.now()
+                at: getServerTime()
               };
             }
           }
@@ -491,13 +782,13 @@ export default function GameScreen() {
             lastCapture,
             inCheck: chess.inCheck(),
             gameOver: isOver,
-            result: isOver ? { type: chess.isCheckmate() ? 'checkmate' : chess.isStalemate() ? 'stalemate' : 'draw', winner: chess.isCheckmate() ? (chess.turn() === 'w' ? 'b' : 'w') : null, endedAt: Date.now() } : null,
+            result: isOver ? { type: chess.isCheckmate() ? 'checkmate' : chess.isStalemate() ? 'stalemate' : 'draw', winner: chess.isCheckmate() ? (chess.turn() === 'w' ? 'b' : 'w') : null, endedAt: getServerTime() } : null,
             endgameMessage: endMsg || null,
-            updatedAt: Date.now(),
+            updatedAt: getServerTime(),
             whiteTime,
             blackTime,
             clocks: { w: whiteTime, b: blackTime },
-            clockStartedAt: isOver ? null : Date.now(),
+            clockStartedAt: isOver ? null : getServerTime(),
             moveHistory: chess.history()
           });
         } else {
@@ -511,7 +802,7 @@ export default function GameScreen() {
     } else {
       selectPiece(square);
     }
-  }, [chess, selectedSquare, myColor, gameId]);
+  }, [chess, selectedSquare, myColor, gameId, gameStarted, whiteTime, blackTime, showLegalMoves]);
 
   const selectPiece = (square: Square) => {
     const piece = chess.get(square);
@@ -530,7 +821,40 @@ export default function GameScreen() {
   };
 
   const handleUndo = () => {
-    Alert.alert('😭 Undo', 'In your dreams!');
+    if (chess.history().length === 0) return;
+
+    if (isBotMode) {
+      if (chess.turn() === myColor && chess.history().length >= 2) {
+        chess.undo(); // undo bot move
+        chess.undo(); // undo my move
+        setFen(chess.fen());
+        setLastMove(null);
+        clearEngineFallbackTimer();
+      } else if (chess.turn() !== myColor) {
+        chess.undo(); // undo my move if bot hasn't moved yet
+        setFen(chess.fen());
+        setLastMove(null);
+        clearEngineFallbackTimer();
+      } else {
+        Alert.alert('Undo', 'Cannot undo right now.');
+      }
+    } else {
+      Alert.alert('Undo Request', 'Send an undo request to your opponent?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Request',
+          onPress: () => {
+            update(ref(db, `games/${gameId}`), {
+              undoRequest: {
+                from: myColor,
+                at: getServerTime()
+              }
+            });
+            Alert.alert('Sent', 'Waiting for opponent to respond...');
+          }
+        }
+      ]);
+    }
   };
 
   const toggleYapping = () => {
@@ -553,7 +877,14 @@ export default function GameScreen() {
     const remainingSeconds = whiteTime + blackTime;
     const durationSec = totalSeconds > remainingSeconds ? totalSeconds - remainingSeconds : 0;
     
-    const endedAt = Date.now();
+    const endedAt = getServerTime();
+    
+    // Clear active game
+    const user = auth.currentUser;
+    if (user) {
+      set(ref(db, `users/${user.uid}/activeGame`), null).catch(() => {});
+    }
+
     const baseKey = String(gameId || 'game').replace(/[^A-Za-z0-9_-]/g, '_');
     const historyKey = `${baseKey}_${endedAt}`;
 
@@ -561,7 +892,7 @@ export default function GameScreen() {
       gameId,
       at: endedAt,
       timestamp: endedAt,
-      mode: 'pvp',
+      mode: isBotMode ? 'bot' : 'pvp',
       myColor,
       myName: auth.currentUser.displayName || 'Player',
       opponent: opponentInfo?.name || 'Opponent',
@@ -580,14 +911,17 @@ export default function GameScreen() {
           setEndgameMessage(endMsg);
           update(ref(db, `games/${gameId}`), { 
             gameOver: true, 
-            result: { type: 'resigned', winner: myColor === 'w' ? 'b' : 'w', endedAt: Date.now() },
+            result: { type: 'resigned', winner: myColor === 'w' ? 'b' : 'w', endedAt: getServerTime() },
             endgameMessage: endMsg
           });
           
           if (!matchHistoryRecorded.current && myColor) {
              const user = auth.currentUser;
              if (user) {
-               const endedAt = Date.now();
+               // Clear active game
+               set(ref(db, `users/${user.uid}/activeGame`), null).catch(() => {});
+
+               const endedAt = getServerTime();
                const baseKey = String(gameId || 'game').replace(/[^A-Za-z0-9_-]/g, '_');
                const historyKey = `${baseKey}_${endedAt}`;
                const durationSec = (600 - whiteTime) + (600 - blackTime);
@@ -595,17 +929,17 @@ export default function GameScreen() {
                  gameId,
                  at: endedAt,
                  timestamp: endedAt,
-                 mode: 'pvp',
+                 mode: isBotMode ? 'bot' : 'pvp',
                  myColor,
                  myName: user.displayName || 'Player',
                  opponent: opponentInfo?.name || 'Opponent',
                  opponentName: opponentInfo?.name || 'Opponent',
                  outcome: 'Loss',
-                 reason: 'Resigned',
+                 reason: 'Resignation',
                  durationSec: durationSec > 0 ? durationSec : 120
                });
+               matchHistoryRecorded.current = true;
              }
-             matchHistoryRecorded.current = true;
           }
           handleGameOver('Resigned', false);
       }}
@@ -618,7 +952,7 @@ export default function GameScreen() {
     setTimeout(() => setLoveMessage(null), 2500);
     
     update(ref(db, `games/${gameId}`), {
-      loveAt: Date.now(),
+      loveAt: getServerTime(),
       loveMessage: msg
     });
   };
@@ -647,6 +981,19 @@ export default function GameScreen() {
 
   const myCapturedText = getCapturedText(myColor || 'w');
   const oppCapturedText = getCapturedText(myColor === 'w' ? 'b' : 'w');
+  const remoteStreamUrl = remoteStream?.toURL?.() || null;
+  const localStreamUrl = localStream?.toURL?.() || null;
+
+  useEffect(() => {
+    console.log("[WEBRTC]", "RTCView render path", {
+      remoteStreamIsNull: !remoteStream,
+      remoteStreamURL: remoteStreamUrl,
+      remoteRTCViewReceivesStreamURL: !!remoteStreamUrl,
+      localStreamIsNull: !localStream,
+      localStreamURL: localStreamUrl,
+      localRTCViewReceivesStreamURL: !!localStreamUrl,
+    });
+  }, [remoteStream, remoteStreamUrl, localStream, localStreamUrl]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -655,20 +1002,55 @@ export default function GameScreen() {
           <Text style={styles.backText}>← Leave</Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          onPress={() => Share.share({ message: `Join my match on ChessTime using code: ${gameId}` })} 
+          onPress={() => !isBotMode && Share.share({ message: `Join my match on ChessTime using code: ${gameId}` })} 
           onLongPress={async () => {
+            if (isBotMode) return;
             await Clipboard.setStringAsync(gameId);
             Alert.alert('Copied!', 'Game code copied to clipboard');
           }}
           style={styles.titleContainer}
+          disabled={isBotMode}
         >
-          <Text style={styles.title}>Code: {gameId} <Ionicons name="share-outline" size={16} /></Text>
+          <Text style={styles.title}>
+            {isBotMode ? 'Vs Computer' : `Code: ${gameId}`} 
+            {!isBotMode && <Ionicons name="share-outline" size={16} />}
+          </Text>
         </TouchableOpacity>
         <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => setShowChat(true)} style={styles.chatBtn}>
-            <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.primary} />
+          <TouchableOpacity onPress={() => { setShowChat(true); setUnreadChatCount(0); }} style={styles.chatBtn}>
+            <View>
+              <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.primary} />
+              {unreadChatCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadChatCount}</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
-          <TouchableOpacity onPress={toggleCamera} style={styles.camBtn}>
+          <TouchableOpacity
+            onPress={toggleAudioMute}
+            style={[
+              styles.micBtn,
+              audioMuted && styles.micMuted,
+              (!cameraEnabled || isBotMode) && styles.micDisabled,
+            ]}
+            disabled={!cameraEnabled || isBotMode}
+            accessibilityRole="button"
+            accessibilityLabel={audioMuted ? 'Unmute microphone' : 'Mute microphone'}
+          >
+            <Ionicons
+              name={audioMuted ? 'mic-off' : 'mic'}
+              size={20}
+              color={
+                !cameraEnabled || isBotMode
+                  ? theme.colors.textMuted
+                  : audioMuted
+                    ? theme.colors.danger
+                    : theme.colors.primary
+              }
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={toggleCamera} style={styles.camBtn} disabled={isBotMode}>
             <Text style={[styles.camText, cameraEnabled && styles.camActive]}>
               {cameraEnabled ? '📹 On' : '📹 Off'}
             </Text>
@@ -679,12 +1061,12 @@ export default function GameScreen() {
       {/* Opponent Card (Top) */}
       <View style={[styles.playerCard, quickConvo && styles.quickConvoCard]}>
          <View style={[styles.videoPlaceholder, quickConvo && styles.quickConvoVideo]}>
-           {remoteStream ? (
-             <RTCView streamURL={remoteStream.toURL()} style={styles.video} objectFit="cover" />
+           {remoteStreamUrl ? (
+             <RTCView key={remoteStreamUrl} streamURL={remoteStreamUrl} style={[styles.video, quickConvo && styles.quickConvoInnerVideo]} objectFit="cover" zOrder={0} />
            ) : opponentInfo?.avatarUrl ? (
-             <Image source={{ uri: opponentInfo.avatarUrl }} style={{ width: 56, height: 56, borderRadius: 28 }} />
+             <Image source={{ uri: opponentInfo.avatarUrl }} style={[styles.avatarImage, quickConvo && styles.quickConvoInnerVideo]} />
            ) : (
-             <Ionicons name="person" size={24} color={theme.colors.textMuted} />
+             <Ionicons name="person" size={quickConvo ? 120 : 24} color={theme.colors.textMuted} />
            )}
          </View>
          {!quickConvo && (
@@ -732,14 +1114,14 @@ export default function GameScreen() {
       )}
 
       {/* User Card (Bottom) */}
-      <View style={[styles.playerCard, quickConvo && styles.quickConvoCard]}>
+      <View style={[styles.playerCard, getGlowStyle(theme.colors.border), quickConvo && styles.quickConvoCard]}>
          <View style={[styles.videoPlaceholder, quickConvo && styles.quickConvoVideo]}>
-           {localStream ? (
-             <RTCView streamURL={localStream.toURL()} style={styles.video} objectFit="cover" />
+           {localStreamUrl ? (
+             <RTCView key={localStreamUrl} streamURL={localStreamUrl} style={[styles.video, quickConvo && styles.quickConvoInnerVideo]} objectFit="cover" zOrder={1} mirror />
            ) : myAvatarUrl ? (
-             <Image source={{ uri: myAvatarUrl }} style={{ width: 56, height: 56, borderRadius: 28 }} />
+             <Image source={{ uri: myAvatarUrl }} style={[styles.avatarImage, quickConvo && styles.quickConvoInnerVideo]} />
            ) : (
-             <Ionicons name="person" size={24} color={theme.colors.textMuted} />
+             <Ionicons name="person" size={quickConvo ? 120 : 24} color={theme.colors.textMuted} />
            )}
          </View>
          {!quickConvo && (
@@ -753,7 +1135,7 @@ export default function GameScreen() {
                <Text style={styles.heart}>❤️</Text>
              </TouchableOpacity>
              
-             <View style={styles.timerBadge}>
+             <View style={[styles.timerBadge, getGlowStyle(theme.colors.border)]}>
                <Text style={styles.timerText}>{formatTime(myTime)}</Text>
              </View>
            </>
@@ -803,6 +1185,22 @@ export default function GameScreen() {
       {showChat && (
         <ChatPanel gameId={gameId} onClose={() => setShowChat(false)} />
       )}
+
+      {isBotMode && (
+        <View style={{ width: 1, height: 1, overflow: 'hidden', position: 'absolute', opacity: 0 }}>
+          <WebView 
+            ref={webViewRef}
+            source={{ html: STOCKFISH_HTML }}
+            onMessage={onWebViewMessage}
+            javaScriptEnabled
+            originWhitelist={['*']}
+            allowFileAccess
+            allowUniversalAccessFromFileURLs
+            mixedContentMode="always"
+            style={{ width: 1, height: 1 }}
+          />
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -810,17 +1208,38 @@ export default function GameScreen() {
 const getStyles = (theme: any) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.colors.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chatBtn: { padding: 4 },
   backBtn: { width: 80 },
   backText: { fontFamily: 'System', color: theme.colors.primary, fontSize: 16 },
   titleContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontFamily: 'System', fontWeight: '700', color: theme.colors.text, fontSize: 16, textAlign: 'center' },
-  camBtn: { width: 80, alignItems: 'flex-end' },
+  camBtn: { width: 64, alignItems: 'flex-end' },
   camText: { fontFamily: 'System', color: theme.colors.textMuted, fontSize: 14 },
   camActive: { color: theme.colors.primary },
+  micBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.border },
+  micMuted: { borderColor: theme.colors.danger, backgroundColor: 'rgba(255, 82, 82, 0.1)' },
+  micDisabled: { opacity: 0.45 },
   
-  playerCard: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 16 },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: theme.colors.danger,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  badgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+    paddingHorizontal: 4,
+  },
+
+  playerCard: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 16, zIndex: 10, backgroundColor: theme.colors.surface, borderRadius: 16 },
   videoPlaceholder: { width: 56, height: 56, borderRadius: 28, backgroundColor: theme.colors.surface, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: theme.colors.border, overflow: 'hidden' },
   video: { width: 56, height: 56 },
   playerInfo: { flex: 1 },
@@ -858,8 +1277,10 @@ const getStyles = (theme: any) => StyleSheet.create({
     paddingHorizontal: 20,
   },
   
-  quickConvoCard: { flex: 1, padding: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, backgroundColor: 'transparent', borderTopWidth: 0 },
-  quickConvoVideo: { width: '100%', height: '100%', borderRadius: 0, borderWidth: 0 },
+  quickConvoCard: { flex: 1, padding: 0, marginHorizontal: 0, marginTop: 0, marginBottom: 0, backgroundColor: 'transparent', borderTopWidth: 0, justifyContent: 'center', alignItems: 'center' },
+  quickConvoVideo: { width: '100%', height: '100%', borderRadius: 0, borderWidth: 0, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
+  quickConvoInnerVideo: { width: '100%', height: '100%', borderRadius: 0 },
+  avatarImage: { width: 56, height: 56, borderRadius: 28 },
   yappingOverlay: { position: 'absolute', top: '50%', width: '100%', alignItems: 'center', zIndex: 100, transform: [{ translateY: -50 }] },
   yappingText: { color: theme.colors.text, fontSize: 32, fontWeight: '800', textShadowColor: '#000', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 4 },
   quickConvoBtn: { marginTop: 16, backgroundColor: theme.colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24 },
@@ -915,3 +1336,4 @@ const getStyles = (theme: any) => StyleSheet.create({
     fontWeight: '700'
   }
 });
+

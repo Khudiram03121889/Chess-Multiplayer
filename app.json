@@ -1,14 +1,23 @@
 {
   "expo": {
     "name": "ChessTimeIOS",
-    "slug": "ChessTimeIOS",
+    "slug": "aidso-ctrackr",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
+      "bundleIdentifier": "com.sameer.chesstimeios",
       "supportsTablet": true,
-      "bitcode": false
+      "bitcode": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "ChessTime uses your camera for video chat during games.",
+        "NSMicrophoneUsageDescription": "ChessTime uses your microphone for voice chat during games.",
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ]
+      }
     },
     "android": {
       "package": "com.sameer.chesstimeios",
@@ -35,6 +44,14 @@
     },
     "plugins": [
       [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "backgroundColor": "#1c1c1e",
+          "resizeMode": "contain"
+        }
+      ],
+      [
         "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": "Allow ChessTime to access your camera",
@@ -54,12 +71,17 @@
             }
           }
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {
-        "projectId": "7d07a5bc-40ff-46a1-929c-e6bad05f6b53"
+        "projectId": "a4ec8cfb-5320-4d37-a778-382214d385d9"
       }
-    }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a4ec8cfb-5320-4d37-a778-382214d385d9"
+    },
+    "owner": "gramaone2021s-team"
   }
 }

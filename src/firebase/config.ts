@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app';
 // @ts-ignore
 import { initializeAuth, getReactNativePersistence, browserLocalPersistence } from 'firebase/auth';
-import { getDatabase } from 'firebase/database';
+import { getDatabase, ref, onValue } from 'firebase/database';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -22,3 +22,14 @@ export const auth = initializeAuth(app, {
 });
 
 export const db = getDatabase(app);
+
+export let serverTimeOffset = 0;
+try {
+  onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
+    serverTimeOffset = snap.val() || 0;
+  });
+} catch (e) {
+  console.warn("Failed to attach serverTimeOffset listener");
+}
+
+export const getServerTime = () => Date.now() + serverTimeOffset;

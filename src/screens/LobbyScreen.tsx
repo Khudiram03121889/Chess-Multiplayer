@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, ScrollView, Switch, Image, ImageBackground } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/theme';
+import { useTheme, getGlowStyle } from '../theme/theme';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -9,7 +9,7 @@ import { auth, db } from '../firebase/config';
 import { ref, get, update } from 'firebase/database';
 import { Ionicons } from '@expo/vector-icons';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MainTabs'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'MainDrawer'>;
 
 export default function LobbyScreen() {
   const { theme, setTheme } = useTheme();
@@ -167,6 +167,9 @@ export default function LobbyScreen() {
         
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity onPress={() => (navigation as any).toggleDrawer()}>
+            <Ionicons name="menu" size={32} color={theme.colors.text} style={{ marginRight: 4 }} />
+          </TouchableOpacity>
           <View style={styles.avatar}>
             {avatarUri ? (
               <Image source={{ uri: avatarUri }} style={{ width: 40, height: 40, borderRadius: 20 }} />
@@ -180,7 +183,7 @@ export default function LobbyScreen() {
         {/* Reunion Banner */}
         <ImageBackground source={require('../../assets/images/chessboard_bg.png')} style={styles.reunionCard} imageStyle={{ opacity: 0.5 }}>
           <Text style={styles.reunionTitle}>REUNION COUNTDOWN</Text>
-          <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
+          <View>
             <Text style={styles.reunionTime}>{countdownText}</Text>
             <Text style={styles.reunionSubTime}>{countdownSubText}</Text>
           </View>
@@ -207,7 +210,7 @@ export default function LobbyScreen() {
           </View>
           {/* Your Color Selection */}
           <Text style={styles.label}>Your Color</Text>
-          <View style={styles.segmentedControl}>
+          <View style={[styles.segmentedControl, getGlowStyle(theme.colors.border)]}>
             <TouchableOpacity onPress={() => setHostColorSelection('w')} style={[styles.segment, hostColorSelection === 'w' && styles.segmentActive]}>
               <Text style={[styles.segmentText, hostColorSelection === 'w' && styles.segmentTextActive]}>White</Text>
             </TouchableOpacity>
@@ -238,20 +241,20 @@ export default function LobbyScreen() {
         </View>
 
         {/* Actions */}
-        <TouchableOpacity style={styles.createBtn} onPress={handleCreateGame}>
+        <TouchableOpacity style={[styles.createBtn, getGlowStyle(theme.colors.primary)]} onPress={handleCreateGame}>
           <Text style={styles.createBtnText}>Create Game</Text>
         </TouchableOpacity>
 
         <View style={styles.joinContainer}>
           <TextInput 
-            style={styles.joinInput}
+            style={[styles.joinInput, getGlowStyle(theme.colors.border)]}
             placeholder="Game Code"
             placeholderTextColor={theme.colors.textMuted}
             value={gameCode}
             onChangeText={setGameCode}
             autoCapitalize="none"
           />
-          <TouchableOpacity style={styles.joinBtn} onPress={handleJoinGame}>
+          <TouchableOpacity style={[styles.joinBtn, getGlowStyle(theme.colors.border)]} onPress={handleJoinGame}>
             <Text style={styles.joinBtnText}>Join</Text>
           </TouchableOpacity>
         </View>
@@ -278,7 +281,7 @@ const getStyles = (theme: any) => StyleSheet.create({
   },
   reunionTitle: { color: theme.colors.primary, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 },
   reunionTime: { color: theme.colors.text, fontSize: 32, fontWeight: '800' },
-  reunionSubTime: { color: theme.colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginLeft: 8, letterSpacing: 1 },
+  reunionSubTime: { color: theme.colors.textMuted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginTop: 4, letterSpacing: 1 },
   panel: { backgroundColor: theme.colors.surface, borderRadius: 16, padding: 20, gap: 16 },
   panelTitle: { color: theme.colors.text, fontSize: 16, fontWeight: '700', marginBottom: 8 },
   segmentedControl: { flexDirection: 'row', backgroundColor: theme.colors.background, borderRadius: 8, padding: 4 },

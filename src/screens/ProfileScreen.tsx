@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/theme';
+import { useNavigation } from '@react-navigation/native';
+import { useTheme, getGlowStyle } from '../theme/theme';
 import { auth, db } from '../firebase/config';
 import { signOut } from 'firebase/auth';
 import { ref, get, update } from 'firebase/database';
@@ -12,6 +13,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 export default function ProfileScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
+  const navigation = useNavigation();
 
   const [displayName, setDisplayName] = useState('');
   const [partnerEmail, setPartnerEmail] = useState('');
@@ -102,6 +104,9 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => (navigation as any).toggleDrawer()}>
+          <Ionicons name="menu" size={32} color={theme.colors.text} style={{ marginRight: 16 }} />
+        </TouchableOpacity>
         <Text style={styles.title}>Profile & Settings</Text>
       </View>
 
@@ -163,7 +168,7 @@ export default function ProfileScreen() {
 
         </View>
 
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+        <TouchableOpacity style={[styles.saveBtn, getGlowStyle(theme.colors.primary)]} onPress={handleSave} disabled={saving}>
           {saving ? <ActivityIndicator color={theme.colors.background} /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
         </TouchableOpacity>
 
@@ -179,7 +184,7 @@ export default function ProfileScreen() {
 const getStyles = (theme: any) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.colors.background },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { padding: 24, paddingBottom: 16 },
+  header: { padding: 24, paddingBottom: 16, flexDirection: 'row', alignItems: 'center' },
   title: { color: theme.colors.text, fontSize: 24, fontWeight: '700' },
   container: { padding: 24, gap: 24 },
   panel: { backgroundColor: theme.colors.surface, borderRadius: 16, padding: 24, alignItems: 'center' },

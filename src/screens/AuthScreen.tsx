@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/theme';
+import { useTheme, getGlowStyle } from '../theme/theme';
 import { auth, db } from '../firebase/config';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set } from 'firebase/database';
@@ -55,7 +55,7 @@ export default function AuthScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
         <Text style={styles.title}>ChessTime</Text>
 
-        <View style={styles.segmentedControl}>
+        <View style={[styles.segmentedControl, getGlowStyle(theme.colors.border)]}>
           <TouchableOpacity onPress={() => setIsLogin(true)} style={[styles.segment, isLogin && styles.segmentActive]}>
             <Text style={[styles.segmentText, isLogin && styles.segmentTextActive]}>Log In</Text>
           </TouchableOpacity>
@@ -100,7 +100,7 @@ export default function AuthScreen() {
               </>
             )}
 
-            <TouchableOpacity style={styles.submitBtn} onPress={handleAuth} disabled={loading}>
+            <TouchableOpacity style={[styles.submitBtn, getGlowStyle(theme.colors.primary)]} onPress={handleAuth} disabled={loading}>
               {loading ? (
                 <ActivityIndicator color={theme.colors.background} />
               ) : (

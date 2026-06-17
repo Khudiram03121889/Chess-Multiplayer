@@ -39,3 +39,29 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Credentials
+credentials.json
+
+# Build files & APKs
+*.apk
+
+# Logs and debug files
+*.log
+*.txt
+
+# Temporary scripts and credentials
+fix.js
+fix.py
+build_*.json
+
+# Crash analysis & temporary documentation
+*Crash_Analysis_Report.md
+*Crash_Report_VERIFIED.md
+
+# Screenshots & images
+WhatsApp Image*
+*.png
+*.jpeg
+*.jpg
+

@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Chess, Square } from 'chess.js';
-import { useTheme, Theme } from '../theme/theme';
+import { useTheme, Theme, getGlowStyle } from '../theme/theme';
 
 interface ChessBoardProps {
   fen: string;
@@ -24,11 +24,6 @@ const getThemeColors = (themeName: string, isDark: boolean) => {
   }
 };
 
-const { width } = Dimensions.get('window');
-// Padding on sides is usually 24px each side from Lobby layout
-const BOARD_SIZE = Math.min(width - 48, 400); 
-const SQUARE_SIZE = BOARD_SIZE / 8;
-
 const SYMBOLS: Record<string, string> = {
   wK:'♥\uFE0E', wQ:'♛\uFE0E', wR:'♜\uFE0E', wB:'♝\uFE0E', wN:'♞\uFE0E', wP:'♟\uFE0E',
   bK:'♥\uFE0E', bQ:'♛\uFE0E', bR:'♜\uFE0E', bB:'♝\uFE0E', bN:'♞\uFE0E', bP:'♟\uFE0E'
@@ -48,7 +43,15 @@ export default function ChessBoard({
   theme = 'neon'
 }: ChessBoardProps) {
   const { theme: currentTheme, fonts } = useTheme();
-  const styles = getStyles(currentTheme, fonts);
+  
+  // Dynamically calculate board size to prevent overflowing when UI shrinks
+  const { width, height } = useWindowDimensions();
+  // We estimate available height: Total height - Header(~80) - 2x PlayerCards(~180) - Controls(~80) = ~340 padding
+  const maxAvailableHeight = height - 340;
+  const BOARD_SIZE = Math.max(200, Math.min(width - 48, maxAvailableHeight, 400));
+  const SQUARE_SIZE = BOARD_SIZE / 8;
+  
+  const styles = getStyles(currentTheme, fonts, BOARD_SIZE, SQUARE_SIZE);
 
   const chess = new Chess(fen);
   const board = chess.board();
@@ -69,7 +72,7 @@ export default function ChessBoard({
           {ranks.map(r => <Text key={`left-${r}`} style={styles.label}>{r}</Text>)}
         </View>
 
-        <View style={styles.board}>
+        <View style={[styles.board, getGlowStyle(currentTheme.colors.border)]}>
           {ranks.map((rankStr) => {
             const rowIndex = RANKS.indexOf(rankStr);
             return (
@@ -137,16 +140,17 @@ export default function ChessBoard({
   );
 }
 
-const getStyles = (theme: any, fonts: any) => StyleSheet.create({
+const getStyles = (theme: any, fonts: any, boardSize: number, squareSize: number) => StyleSheet.create({
   boardWrapper: { alignItems: 'center' },
   boardRowWrapper: { flexDirection: 'row', alignItems: 'stretch' },
   board: {
-    width: BOARD_SIZE,
-    height: BOARD_SIZE,
+    width: boardSize,
+    height: boardSize,
     borderWidth: 3,
     borderColor: '#6aaed6',
     borderRadius: 4,
     flexDirection: 'column',
+    backgroundColor: '#18182a', // Safe fallback
     shadowColor: '#8ecae6',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.35,
@@ -161,38 +165,38 @@ const getStyles = (theme: any, fonts: any) => StyleSheet.create({
     position: 'relative'
   },
   piece: {
-    fontSize: SQUARE_SIZE * 0.7,
-    fontFamily: fonts.cinzel, // or system font for unicode symbols
+    fontSize: squareSize * 0.7,
+    fontFamily: fonts.cinzel,
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
-  pieceWhite: { color: '#ffffff', textShadowColor: 'rgba(0, 0, 0, 0.5)', textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } },
-  pieceBlack: { color: '#000000', textShadowColor: 'rgba(255, 255, 255, 0.5)', textShadowRadius: 3, textShadowOffset: { width: 0, height: 1 } },
+  pieceWhite: { color: '#ffffff', textShadowColor: 'rgba(0, 0, 0, 0.7)', textShadowRadius: 5, textShadowOffset: { width: 1, height: 2 } },
+  pieceBlack: { color: '#000000', textShadowColor: 'rgba(255, 255, 255, 0.4)', textShadowRadius: 5, textShadowOffset: { width: 1, height: 2 } },
   pieceCheck: { textShadowColor: 'rgba(192,57,43,0.8)', textShadowRadius: 10 },
   hint: {
     position: 'absolute',
     borderRadius: 50,
   },
   hintMove: {
-    width: SQUARE_SIZE * 0.25,
-    height: SQUARE_SIZE * 0.25,
+    width: squareSize * 0.25,
+    height: squareSize * 0.25,
     backgroundColor: 'rgba(201,164,76,0.25)',
   },
   hintCapture: {
-    width: SQUARE_SIZE * 0.8,
-    height: SQUARE_SIZE * 0.8,
+    width: squareSize * 0.8,
+    height: squareSize * 0.8,
     borderWidth: 3,
     borderColor: 'rgba(139,105,20,0.45)',
   },
   fileLabels: {
     flexDirection: 'row',
-    width: BOARD_SIZE,
+    width: boardSize,
     justifyContent: 'space-around',
     marginVertical: 4,
   },
   rankLabels: {
     flexDirection: 'column',
-    height: BOARD_SIZE,
+    height: boardSize,
     justifyContent: 'space-around',
     marginHorizontal: 4,
   },

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useTheme } from '../theme/theme';
+import { useTheme, getGlowStyle } from '../theme/theme';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { auth, db } from '../firebase/config';
 import { ref, get } from 'firebase/database';
@@ -17,6 +18,7 @@ interface MatchItem {
 export default function MatchesScreen() {
   const { theme } = useTheme();
   const styles = getStyles(theme);
+  const navigation = useNavigation();
 
   const [matches, setMatches] = useState<MatchItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +67,7 @@ export default function MatchesScreen() {
     const durationStr = `${mins}m ${secs}s`;
     
     return (
-      <View style={styles.card}>
+      <View style={[styles.card, getGlowStyle(theme.colors.border)]}>
         <View style={styles.cardLeft}>
           <View style={styles.avatar}><Ionicons name="person" size={20} color={theme.colors.surface} /></View>
           <Text style={styles.opponent}>{item.opponent || 'Unknown'}</Text>
@@ -86,6 +88,9 @@ export default function MatchesScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => (navigation as any).toggleDrawer()}>
+          <Ionicons name="menu" size={32} color={theme.colors.text} style={{ marginRight: 16 }} />
+        </TouchableOpacity>
         <Text style={styles.title}>Match History</Text>
       </View>
 
@@ -111,7 +116,7 @@ export default function MatchesScreen() {
 
 const getStyles = (theme: any) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.colors.background },
-  header: { padding: 24, paddingBottom: 16 },
+  header: { padding: 24, paddingBottom: 16, flexDirection: 'row', alignItems: 'center' },
   title: { color: theme.colors.text, fontSize: 24, fontWeight: '700' },
   list: { padding: 24, gap: 16 },
   card: {

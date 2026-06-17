@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createDrawerNavigator } from '@react-navigation/drawer';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { View, ActivityIndicator } from 'react-native';
@@ -15,35 +15,32 @@ import ProfileScreen from '../screens/ProfileScreen';
 
 export type RootStackParamList = {
   Auth: undefined;
-  MainTabs: undefined;
-  Game: { gameId?: string; theme?: string };
+  MainDrawer: undefined;
+  Game: { gameId?: string; theme?: string; isBotMode?: boolean; botColorSelection?: string; showLegalMoves?: boolean; };
 };
 
-export type MainTabParamList = {
+export type MainDrawerParamList = {
   Lobby: undefined;
   Matches: undefined;
   Profile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Drawer = createDrawerNavigator<MainDrawerParamList>();
 
-function MainTabs() {
+function MainDrawer() {
   const { theme } = useTheme();
   return (
-    <Tab.Navigator
+    <Drawer.Navigator
+      initialRouteName="Lobby"
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarStyle: {
+        drawerStyle: {
           backgroundColor: theme.colors.surface,
-          borderTopWidth: 1,
-          borderTopColor: theme.colors.border,
-          paddingBottom: 5,
-          paddingTop: 5,
         },
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.textMuted,
-        tabBarIcon: ({ color, size }) => {
+        drawerActiveTintColor: theme.colors.primary,
+        drawerInactiveTintColor: theme.colors.text,
+        drawerIcon: ({ color, size }) => {
           let iconName: any = 'home';
           if (route.name === 'Lobby') iconName = 'game-controller';
           else if (route.name === 'Matches') iconName = 'time';
@@ -52,10 +49,10 @@ function MainTabs() {
         },
       })}
     >
-      <Tab.Screen name="Lobby" component={LobbyScreen} />
-      <Tab.Screen name="Matches" component={MatchesScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
-    </Tab.Navigator>
+      <Drawer.Screen name="Lobby" component={LobbyScreen} />
+      <Drawer.Screen name="Matches" component={MatchesScreen} />
+      <Drawer.Screen name="Profile" component={ProfileScreen} />
+    </Drawer.Navigator>
   );
 }
 
@@ -91,7 +88,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Auth" component={AuthScreen} />
       ) : (
         <>
-          <Stack.Screen name="MainTabs" component={MainTabs} />
+          <Stack.Screen name="MainDrawer" component={MainDrawer} />
           <Stack.Screen name="Game" component={GameScreen} />
         </>
       )}

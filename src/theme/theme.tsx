@@ -45,15 +45,15 @@ export const THEMES = {
   },
   og: {
     colors: {
-      background: '#000000',
-      surface: '#111111',
-      primary: '#ff3366',
-      danger: '#ff0000',
+      background: '#c19a6b',
+      surface: '#a87f54',
+      primary: '#4e342e',
+      danger: '#d32f2f',
       text: '#ffffff',
-      textMuted: '#888888',
-      border: '#333333',
-      boardDark: '#333333',
-      boardLight: '#555555',
+      textMuted: '#e0d4c8',
+      border: 'rgba(255, 255, 255, 0.2)',
+      boardDark: '#8b5a2b',
+      boardLight: '#f0d9b5',
     }
   }
 };
@@ -108,5 +108,13 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     </ThemeContext.Provider>
   );
 };
+
+export const getGlowStyle = (color: string) => ({
+  shadowColor: color,
+  shadowOffset: { width: 0, height: 6 },
+  shadowOpacity: 0.8,
+  shadowRadius: 15,
+  elevation: 12,
+});
 
 export const useTheme = () => useContext(ThemeContext);
