@@ -62,3 +62,25 @@ for root, dirs, files in os.walk("node_modules"):
                 print(f"Error processing {path}: {e}")
 
 print(f"Scan complete. Patched {patched_count} Package.swift file(s).")
+
+# 4. Scan all Swift files in node_modules and replace "weak let" with "weak var" to fix Swift 6 compiler error
+print("Scanning node_modules for Swift files to fix 'weak let'...")
+swift_patched = 0
+for root, dirs, files in os.walk("node_modules"):
+    for file in files:
+        if file.endswith(".swift"):
+            path = os.path.join(root, file)
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                
+                if "weak let" in content:
+                    print(f"Fixing 'weak let' -> 'weak var' in {path}")
+                    content = content.replace("weak let", "weak var")
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    swift_patched += 1
+            except Exception as e:
+                print(f"Error patching Swift file {path}: {e}")
+print(f"Fixed {swift_patched} Swift file(s).")
+
