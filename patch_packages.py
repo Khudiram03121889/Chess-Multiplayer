@@ -78,11 +78,41 @@ for root, dirs, files in os.walk("node_modules"):
                 if "weak let" in content:
                     print(f"Fixing 'weak let' -> 'weak var' in {path}")
                     content = content.replace("weak let", "weak var")
-                    # If we changed to weak var, it makes it mutable, which breaks Sendable. Change to @unchecked Sendable
-                    if ": Sendable" in content and ": @unchecked Sendable" not in content:
-                        content = content.replace(": Sendable", ": @unchecked Sendable")
                     content_modified = True
-                
+
+                # Manually patch the Sendable protocols for the files failing strict concurrency in Xcode 16.4
+                if "JavaScriptPropNameID.swift" in path and "class JavaScriptPropNameID: JavaScriptType {" in content:
+                    print(f"Adding @unchecked Sendable to JavaScriptPropNameID in {path}")
+                    content = content.replace(
+                        "class JavaScriptPropNameID: JavaScriptType {",
+                        "class JavaScriptPropNameID: JavaScriptType, @unchecked Sendable {"
+                    )
+                    content_modified = True
+                    
+                if "JavaScriptValue.swift" in path and "class JavaScriptValue: JavaScriptType, Equatable, Escapable, Error {" in content:
+                    print(f"Adding @unchecked Sendable to JavaScriptValue in {path}")
+                    content = content.replace(
+                        "class JavaScriptValue: JavaScriptType, Equatable, Escapable, Error {",
+                        "class JavaScriptValue: JavaScriptType, Equatable, Escapable, Error, @unchecked Sendable {"
+                    )
+                    content_modified = True
+                    
+                if "HostFunctionContext.swift" in path and "class HostFunctionContext: Sendable {" in content:
+                    print(f"Fixing Sendable for HostFunctionContext in {path}")
+                    content = content.replace(
+                        "class HostFunctionContext: Sendable {",
+                        "class HostFunctionContext: @unchecked Sendable {"
+                    )
+                    content_modified = True
+                    
+                if "HostObjectContext.swift" in path and "class HostObjectContext: Sendable {" in content:
+                    print(f"Fixing Sendable for HostObjectContext in {path}")
+                    content = content.replace(
+                        "class HostObjectContext: Sendable {",
+                        "class HostObjectContext: @unchecked Sendable {"
+                    )
+                    content_modified = True
+
                 # Fix trailing comma in JavaScriptRuntime.swift
                 if "JavaScriptRuntime.swift" in path and "_ arguments: consuming JavaScriptValuesBuffer," in content:
                     print(f"Fixing trailing comma in {path}")
