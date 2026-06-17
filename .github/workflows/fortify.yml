@@ -71,7 +71,19 @@ jobs:
                      CODE_SIGNING_ALLOWED=NO \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGN_IDENTITY="" \
-                     PROVISIONING_PROFILE_REQUIRED=NO
+                     PROVISIONING_PROFILE_REQUIRED=NO \
+                     > xcodebuild.log 2>&1
+          
+          if [ $? -ne 0 ]; then
+            echo "============================================="
+            echo "           XCODEBUILD BUILD FAILED           "
+            echo "============================================="
+            echo "--- Extracting compile errors from log ---"
+            grep -i -C 3 "error:" xcodebuild.log || true
+            echo "--- Last 200 lines of build log ---"
+            tail -n 200 xcodebuild.log
+            exit 1
+          fi
 
       - name: Package IPA
         run: |
