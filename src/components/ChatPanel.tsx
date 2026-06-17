@@ -4,6 +4,7 @@ import { ref, onValue, push, serverTimestamp } from 'firebase/database';
 import { db, auth } from '../firebase/config';
 import { useTheme } from '../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ChatMessage {
   id: string;
@@ -20,6 +21,7 @@ interface ChatPanelProps {
 
 export default function ChatPanel({ gameId, onClose }: ChatPanelProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = getStyles(theme);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -89,7 +91,7 @@ export default function ChatPanel({ gameId, onClose }: ChatPanelProps) {
         onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <TextInput
           style={styles.input}
           value={inputText}

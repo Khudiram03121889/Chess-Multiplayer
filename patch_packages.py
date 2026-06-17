@@ -74,9 +74,22 @@ for root, dirs, files in os.walk("node_modules"):
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
                 
+                content_modified = False
                 if "weak let" in content:
                     print(f"Fixing 'weak let' -> 'weak var' in {path}")
                     content = content.replace("weak let", "weak var")
+                    # If we changed to weak var, it makes it mutable, which breaks Sendable. Change to @unchecked Sendable
+                    if ": Sendable" in content and ": @unchecked Sendable" not in content:
+                        content = content.replace(": Sendable", ": @unchecked Sendable")
+                    content_modified = True
+                
+                # Fix trailing comma in JavaScriptRuntime.swift
+                if "JavaScriptRuntime.swift" in path and "_ arguments: consuming JavaScriptValuesBuffer," in content:
+                    print(f"Fixing trailing comma in {path}")
+                    content = content.replace("_ arguments: consuming JavaScriptValuesBuffer,", "_ arguments: consuming JavaScriptValuesBuffer")
+                    content_modified = True
+
+                if content_modified:
                     with open(path, "w", encoding="utf-8") as f:
                         f.write(content)
                     swift_patched += 1

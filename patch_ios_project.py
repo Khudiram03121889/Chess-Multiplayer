@@ -57,8 +57,8 @@ resolved_content = {
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "937c9fb3327668615ff28b577ca226d40081d9f6",
-        "version" : "1.1.2"
+        "revision" : "d029d9d690cb616d61dce466ce78d2b998ccb086",
+        "version" : "1.1.4"
       }
     },
     {
