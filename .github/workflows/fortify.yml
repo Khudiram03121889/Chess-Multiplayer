@@ -3,6 +3,9 @@ name: iOS-ipa-build
 env:
   EXPO_USE_PRECOMPILED_MODULES: 0
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
 
@@ -30,32 +33,14 @@ jobs:
         run: |
           ruby -e '
           podfile = File.read("ios/Podfile")
-          addition = "
-            post_install do |installer|
-              installer.pods_project.targets.each do |target|
-                target.build_configurations.each do |config|
-                  config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"
-                  config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"
-                  config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"
-                end
-              end
-              installer.aggregate_targets.each do |target|
-                target.user_project.targets.each do |proj_target|
-                  proj_target.build_configurations.each do |config|
-                    config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"
-                    config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"
-                    config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"
-                  end
-                end
-                target.user_project.save
-              end
-          "
           if podfile.include?("post_install do |installer|")
-            podfile = podfile.sub("post_install do |installer|", addition)
+            code_signing_logic = "  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n    end\n  end\n  installer.aggregate_targets.each do |target|\n    target.user_project.targets.each do |proj_target|\n      proj_target.build_configurations.each do |config|\n        config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      end\n    end\n    target.user_project.save\n  end"
+            podfile = podfile.sub("post_install do |installer|", "post_install do |installer|\n#{code_signing_logic}")
             File.write("ios/Podfile", podfile)
             puts "Successfully patched Podfile"
           else
             puts "Could not find post_install in Podfile"
+            exit 1
           end
           '
 
@@ -80,29 +65,29 @@ jobs:
             echo "           XCODEBUILD BUILD FAILED           "
             echo "============================================="
             python3 -c '
-import sys
-try:
-    with open("xcodebuild.log", "r", encoding="utf-8", errors="ignore") as f:
-        lines = f.readlines()
-except Exception as e:
-    print("Failed to read log:", e)
-    sys.exit(1)
+            import sys
+            try:
+                with open("xcodebuild.log", "r", encoding="utf-8", errors="ignore") as f:
+                    lines = f.readlines()
+            except Exception as e:
+                print("Failed to read log:", e)
+                sys.exit(1)
 
-errors = []
-for idx, line in enumerate(lines):
-    if "error:" in line.lower() and "note:" not in line.lower():
-        start = max(0, idx - 4)
-        end = min(len(lines), idx + 5)
-        errors.append((idx + 1, lines[start:end]))
+            errors = []
+            for idx, line in enumerate(lines):
+                if "error:" in line.lower() and "note:" not in line.lower():
+                    start = max(0, idx - 4)
+                    end = min(len(lines), idx + 5)
+                    errors.append((idx + 1, lines[start:end]))
 
-if errors:
-    print(f"=== Found {len(errors)} error(s) in log ===")
-    for line_num, context in errors[:15]:
-        print(f"\n--- Error near line {line_num} ---")
-        print("".join(context))
-else:
-    print("No explicit \"error:\" found in log. Printing last 100 lines:")
-    print("".join(lines[-100:]))
+            if errors:
+                print(f"=== Found {len(errors)} error(s) in log ===")
+                for line_num, context in errors[:15]:
+                    print(f"\n--- Error near line {line_num} ---")
+                    print("".join(context))
+            else:
+                print("No explicit \"error:\" found in log. Printing last 100 lines:")
+                print("".join(lines[-100:]))
             '
             exit 1
           fi
