@@ -55,6 +55,8 @@ jobs:
 
       - name: Install Pods
         run: |
+          rm -rf ios/ChessTimeIOS.xcworkspace
+          sudo gem install cocoapods
           cd ios
           pod install
 
