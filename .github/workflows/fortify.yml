@@ -12,8 +12,11 @@ on:
 jobs:
   build-ios:
     name: 🎉 iOS Build
-    runs-on: macos-latest
+    runs-on: macos-14
     steps:
+      - name: Select Xcode 15.4
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -119,4 +122,3 @@ jobs:
           tag: v1.0
           overwrite: true
           body: "This is first release"
-
