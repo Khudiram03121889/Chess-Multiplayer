@@ -33,6 +33,13 @@ for root, dirs, files in os.walk("node_modules"):
                         except ValueError:
                             pass
                 
+                # 1.5. Clean trailing commas in function/initializer calls for Swift 6.0 compatibility
+                new_content = re.sub(r',\s*\)', ')', content)
+                if new_content != content:
+                    print(f"Stripped trailing commas in {path}")
+                    content = new_content
+                    modified = True
+                
                 # 2. Pin apple/swift-collections to 1.1.4 (compatible with Swift 6.1)
                 if "swift-collections" in content and "1.1.4" not in content:
                     print(f"Pinning swift-collections in {path}")
