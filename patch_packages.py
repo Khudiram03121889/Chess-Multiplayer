@@ -237,3 +237,38 @@ for root, dirs, files in os.walk("node_modules"):
                     print(f"Patched {jsi_path}")
             except Exception as e:
                 print(f"Error patching {jsi_path}: {e}")
+
+# 8. Fix Swift 5.10 incompatible syntax: @MainActor on protocol conformance
+print("Patching @MainActor on protocol conformances for Swift 5 mode...")
+expo_modules_core_ios = os.path.join("node_modules", "expo-modules-core", "ios")
+if os.path.exists(expo_modules_core_ios):
+    for root, dirs, files in os.walk(expo_modules_core_ios):
+        for file in files:
+            if file.endswith(".swift"):
+                path = os.path.join(root, file)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                    
+                    original_content = content
+                    
+                    # Pattern 1: class A: B, @MainActor C {
+                    content = re.sub(
+                        r'(public\s+final\s+class|final\s+class|public\s+class|class|internal\s+final\s+class)\s+(.*?):\s*(.*?),\s*@MainActor\s+(.*?)\s*\{',
+                        r'@MainActor\n\1 \2: \3, \4 {',
+                        content
+                    )
+                    
+                    # Pattern 2: extension A: @MainActor B {
+                    content = re.sub(
+                        r'(public\s+extension|internal\s+extension|extension)\s+(.*?):\s*@MainActor\s+(.*?)\s*\{',
+                        r'@MainActor\n\1 \2: \3 {',
+                        content
+                    )
+                    
+                    if content != original_content:
+                        with open(path, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        print(f"Patched @MainActor in {path}")
+                except Exception as e:
+                    print(f"Error patching @MainActor in {path}: {e}")
