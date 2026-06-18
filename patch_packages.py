@@ -297,3 +297,46 @@ if os.path.exists(expo_modules_core_ios):
                         print(f"Successfully wrote patched @MainActor in {path}")
                 except Exception as e:
                     print(f"Error patching @MainActor in {path}: {e}")
+
+# 9. Fix iOS 26.0 contentType API usage in expo-image-picker
+print("Patching MediaHandler.swift in expo-image-picker...")
+media_handler_path = os.path.join("node_modules", "expo-image-picker", "ios", "MediaHandler.swift")
+if os.path.exists(media_handler_path):
+    try:
+        with open(media_handler_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        target_1 = """  private func getMimeType(from asset: PHAsset?, fileExtension: String) -> String? {
+    let utType: UTType? = if #available(iOS 26.0, *) {
+      asset?.contentType ?? UTType(filenameExtension: fileExtension)
+    } else {
+      UTType(filenameExtension: fileExtension)
+    }
+    return utType?.preferredMIMEType
+  }"""
+        replacement_1 = """  private func getMimeType(from asset: PHAsset?, fileExtension: String) -> String? {
+    let utType: UTType? = UTType(filenameExtension: fileExtension)
+    return utType?.preferredMIMEType
+  }"""
+
+        target_2 = """  private func getMimeType(from resource: PHAssetResource, fileExtension: String) -> String? {
+    let utType: UTType? = if #available(iOS 26.0, *) {
+      resource.contentType
+    } else {
+      UTType(resource.uniformTypeIdentifier) ?? UTType(filenameExtension: fileExtension)
+    }
+    return utType?.preferredMIMEType
+  }"""
+        replacement_2 = """  private func getMimeType(from resource: PHAssetResource, fileExtension: String) -> String? {
+    let utType: UTType? = UTType(resource.uniformTypeIdentifier) ?? UTType(filenameExtension: fileExtension)
+    return utType?.preferredMIMEType
+  }"""
+
+        if target_1 in content or target_2 in content:
+            content = content.replace(target_1, replacement_1)
+            content = content.replace(target_2, replacement_2)
+            with open(media_handler_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"Successfully patched {media_handler_path}")
+    except Exception as e:
+        print(f"Error patching {media_handler_path}: {e}")
