@@ -198,3 +198,22 @@ for root, dirs, files in os.walk("node_modules"):
                 pass
 print(f"Fixed {cpp_patched} C++ header file(s).")
 
+# 6. Patch build-xcframework.sh in expo-modules-jsi to include OTHER_CPLUSPLUSFLAGS
+print("Patching build-xcframework.sh in expo-modules-jsi...")
+build_script_path = os.path.join("node_modules", "expo-modules-jsi", "apple", "scripts", "build-xcframework.sh")
+if os.path.exists(build_script_path):
+    try:
+        with open(build_script_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        target_str = "SWIFT_COMPILATION_MODE=wholemodule \\"
+        replacement_str = "SWIFT_COMPILATION_MODE=wholemodule \\\n    OTHER_CPLUSPLUSFLAGS='$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0 -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION -std=c++20' \\"
+        
+        if target_str in content and "OTHER_CPLUSPLUSFLAGS" not in content:
+            content = content.replace(target_str, replacement_str)
+            with open(build_script_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"Patched {build_script_path}")
+    except Exception as e:
+        print(f"Error patching {build_script_path}: {e}")
+
