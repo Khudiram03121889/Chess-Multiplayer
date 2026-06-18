@@ -34,8 +34,8 @@ if os.path.exists(proj_path):
     def replacer_syn(match):
         prefix = match.group(1)
         suffix = match.group(3)
-        new_req = '\n\t\t\t\tkind = exactVersion;\n\t\t\t\tversion = 600.0.1;\n\t\t\t'
-        print("Changing swift-syntax requirement to exactVersion 600.0.1 in project.pbxproj")
+        new_req = '\n\t\t\t\tkind = exactVersion;\n\t\t\t\tversion = 601.0.1;\n\t\t\t'
+        print("Changing swift-syntax requirement to exactVersion 601.0.1 in project.pbxproj")
         return prefix + new_req + suffix
 
     new_content, count_syn = re.subn(pattern_syn, replacer_syn, new_content, flags=re.MULTILINE)
@@ -75,8 +75,8 @@ resolved_content = {
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-syntax.git",
       "state" : {
-        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
-        "version" : "600.0.1"
+        "revision" : "f99ae8aa18f0cf0d53481901f88a0991dc3bd4a2",
+        "version" : "601.0.1"
       }
     },
     {
@@ -84,8 +84,8 @@ resolved_content = {
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-syntax",
       "state" : {
-        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
-        "version" : "600.0.1"
+        "revision" : "f99ae8aa18f0cf0d53481901f88a0991dc3bd4a2",
+        "version" : "601.0.1"
       }
     },
     {
@@ -93,8 +93,8 @@ resolved_content = {
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
-        "version" : "600.0.1"
+        "revision" : "f99ae8aa18f0cf0d53481901f88a0991dc3bd4a2",
+        "version" : "601.0.1"
       }
     },
     {
@@ -102,8 +102,8 @@ resolved_content = {
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax",
       "state" : {
-        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
-        "version" : "600.0.1"
+        "revision" : "f99ae8aa18f0cf0d53481901f88a0991dc3bd4a2",
+        "version" : "601.0.1"
       }
     }
   ],

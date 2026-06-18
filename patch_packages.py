@@ -14,7 +14,8 @@ for root, dirs, files in os.walk("node_modules"):
                 
                 modified = False
                 
-                # 1. Check and downgrade swift-tools-version if greater than 6.1
+                # 1. Allow swift-tools-version up to 6.1; only downgrade if > 6.1 (e.g. 6.2+)
+                # Xcode 16.4 ships Swift 6.1 so tools-version: 6.1 is fully supported.
                 match = re.match(r"^//\s*swift-tools-version:\s*([\d\.]+)", content)
                 if match:
                     version = match.group(1)
@@ -22,37 +23,16 @@ for root, dirs, files in os.walk("node_modules"):
                     if len(parts) >= 2:
                         try:
                             major, minor = int(parts[0]), int(parts[1])
-                            if major > 6 or (major == 6 and minor > 0):
-                                print(f"Downgrading tools-version in {path} from {version} to 6.0")
+                            if major > 6 or (major == 6 and minor > 1):
+                                print(f"Downgrading tools-version in {path} from {version} to 6.1")
                                 content = re.sub(
                                     r"^//\s*swift-tools-version:\s*[\d\.]+",
-                                    "// swift-tools-version: 6.0",
+                                    "// swift-tools-version: 6.1",
                                     content
                                 )
                                 modified = True
                         except ValueError:
                             pass
-                
-                # 1.5. Clean trailing commas in function/initializer calls for Swift 6.0 compatibility
-                new_content = re.sub(r',\s*\)', ')', content)
-                if new_content != content:
-                    print(f"Stripped trailing commas in {path}")
-                    content = new_content
-                    modified = True
-
-                # 1.6. Strip Swift 6.1-only .enableUpcomingFeature() calls that don't exist in Swift 6.0
-                # These are SE-0461 and SE-0470 proposals only available in Swift 6.1+
-                swift61_features = [
-                    "NonisolatedNonsendingByDefault",
-                    "InferIsolatedConformances",
-                ]
-                for feat in swift61_features:
-                    pattern = r'\s*\.enableUpcomingFeature\("' + feat + r'"\),?\n?'
-                    new_content = re.sub(pattern, "\n", content)
-                    if new_content != content:
-                        print(f"Stripped enableUpcomingFeature({feat}) from {path}")
-                        content = new_content
-                        modified = True
 
                 # 2. Pin apple/swift-collections to 1.1.4 (compatible with Swift 6.1)
                 if "swift-collections" in content and "1.1.4" not in content:
@@ -63,13 +43,13 @@ for root, dirs, files in os.walk("node_modules"):
                         content
                     )
                     modified = True
-                
-                # 3. Pin apple/swift-syntax to 600.0.1 (compatible with Swift 6.0/6.1)
-                if "swift-syntax" in content and "600.0.1" not in content:
+
+                # 3. Pin apple/swift-syntax to 601.0.1 (ships with Swift 6.1 / Xcode 16.4)
+                if "swift-syntax" in content and "601.0.1" not in content:
                     print(f"Pinning swift-syntax in {path}")
                     content = re.sub(
                         r'\.package\(url:\s*["\']https://github.com/apple/swift-syntax(?:\.git)?["\']\s*,\s*[^)]+\)',
-                        '.package(url: "https://github.com/apple/swift-syntax.git", exact: "600.0.1")',
+                        '.package(url: "https://github.com/apple/swift-syntax.git", exact: "601.0.1")',
                         content
                     )
                     modified = True
