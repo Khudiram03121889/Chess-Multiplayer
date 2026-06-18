@@ -113,7 +113,8 @@ resolved_content = {
 # Resolve target folders for Package.resolved
 paths_to_write = [
     "ios/ChessTimeIOS.xcodeproj/project.xcworkspace/xcshareddata/swiftpm",
-    "ios/ChessTimeIOS.xcworkspace/xcshareddata/swiftpm"
+    "ios/ChessTimeIOS.xcworkspace/xcshareddata/swiftpm",
+    "ios/Pods/Pods.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
 ]
 
 for resolved_dir in paths_to_write:
