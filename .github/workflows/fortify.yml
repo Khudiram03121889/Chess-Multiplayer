@@ -58,7 +58,7 @@ jobs:
           ruby -e '
           podfile = File.read("ios/Podfile")
           if podfile.include?("post_install do |installer|")
-            code_signing_logic = "  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"SDKROOT\"] = \"iphoneos\"\n      config.build_settings[\"SUPPORTED_PLATFORMS\"] = \"iphoneos\"\n      config.build_settings[\"ACTOOL_VALIDATE_SIMULATOR_PLATFORMS\"] = \"NO\"\n      config.build_settings[\"CLANG_CXX_LANGUAGE_STANDARD\"] = \"c++20\"\n      config.build_settings[\"OTHER_CPLUSPLUSFLAGS\"] = \"$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0\"\n      config.build_settings[\"SWIFT_STRICT_CONCURRENCY\"] = \"minimal\"\n      config.build_settings[\"SWIFT_VERSION\"] = \"5.0\"\n    end\n  end\n  installer.aggregate_targets.each do |target|\n    target.user_project.targets.each do |proj_target|\n      proj_target.build_configurations.each do |config|\n        config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n        config.build_settings[\"SDKROOT\"] = \"iphoneos\"\n        config.build_settings[\"SUPPORTED_PLATFORMS\"] = \"iphoneos\"\n        config.build_settings[\"ACTOOL_VALIDATE_SIMULATOR_PLATFORMS\"] = \"NO\"\n        config.build_settings[\"CLANG_CXX_LANGUAGE_STANDARD\"] = \"c++20\"\n        config.build_settings[\"SWIFT_STRICT_CONCURRENCY\"] = \"minimal\"\n        config.build_settings[\"SWIFT_VERSION\"] = \"5.0\"\n      end\n    end\n    target.user_project.save\n  end"
+            code_signing_logic = "  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"SDKROOT\"] = \"iphonesimulator\"\n      config.build_settings[\"SUPPORTED_PLATFORMS\"] = \"iphonesimulator\"\n      config.build_settings[\"ACTOOL_VALIDATE_SIMULATOR_PLATFORMS\"] = \"NO\"\n      config.build_settings[\"CLANG_CXX_LANGUAGE_STANDARD\"] = \"c++20\"\n      config.build_settings[\"OTHER_CPLUSPLUSFLAGS\"] = \"$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0\"\n      config.build_settings[\"SWIFT_STRICT_CONCURRENCY\"] = \"minimal\"\n      config.build_settings[\"SWIFT_VERSION\"] = \"5.0\"\n    end\n  end\n  installer.aggregate_targets.each do |target|\n    target.user_project.targets.each do |proj_target|\n      proj_target.build_configurations.each do |config|\n        config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n        config.build_settings[\"SDKROOT\"] = \"iphonesimulator\"\n        config.build_settings[\"SUPPORTED_PLATFORMS\"] = \"iphonesimulator\"\n        config.build_settings[\"ACTOOL_VALIDATE_SIMULATOR_PLATFORMS\"] = \"NO\"\n        config.build_settings[\"CLANG_CXX_LANGUAGE_STANDARD\"] = \"c++20\"\n        config.build_settings[\"SWIFT_STRICT_CONCURRENCY\"] = \"minimal\"\n        config.build_settings[\"SWIFT_VERSION\"] = \"5.0\"\n      end\n    end\n    target.user_project.save\n  end"
             podfile = podfile.sub("post_install do |installer|", "post_install do |installer|\n#{code_signing_logic}")
             File.write("ios/Podfile", podfile)
             puts "Successfully patched Podfile"
@@ -75,18 +75,18 @@ jobs:
 
       - name: Patch iOS Xcode Project and lock SPM dependencies
         run: python3 patch_ios_project.py
-      - name: Build iOS App (Unsigned)
+      - name: Build iOS App for Simulator
         run: |
           if ! xcodebuild -workspace ios/ChessTimeIOS.xcworkspace \
                          -scheme ChessTimeIOS \
                          -configuration Release \
-                         -sdk iphoneos \
+                         -sdk iphonesimulator \
+                         -destination 'generic/platform=iOS Simulator' \
                          -derivedDataPath build \
                          CODE_SIGNING_ALLOWED=NO \
                          CODE_SIGNING_REQUIRED=NO \
                          CODE_SIGN_IDENTITY="" \
                          PROVISIONING_PROFILE_REQUIRED=NO \
-                         ACTOOL_VALIDATE_SIMULATOR_PLATFORMS=NO \
                          > xcodebuild.log 2>&1; then
             echo "============================================="
             echo "           XCODEBUILD BUILD FAILED           "
@@ -126,17 +126,16 @@ jobs:
           name: xcodebuild-log
           path: xcodebuild.log
 
-      - name: Package IPA
+      - name: Package Simulator App
         run: |
-          mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/ChessTimeIOS.app Payload/
-          zip -qq -r -9 ChessTimeIOS.ipa Payload
+          cp -R build/Build/Products/Release-iphonesimulator/ChessTimeIOS.app ./
+          zip -qq -r -9 ChessTimeIOS-Simulator.zip ChessTimeIOS.app
 
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ChessTimeIOS.ipa
+          file: ChessTimeIOS-Simulator.zip
           tag: v1.0
           overwrite: true
-          body: "This is first release"
+          body: "This is the Simulator build for Appetize.io"
