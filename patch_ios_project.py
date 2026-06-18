@@ -64,7 +64,7 @@ resolved_content = {
     {
       "identity" : "swift-syntax",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-syntax.git",
+      "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
         "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
         "version" : "600.0.1"
