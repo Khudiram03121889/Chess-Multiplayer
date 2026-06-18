@@ -253,6 +253,9 @@ if os.path.exists(expo_modules_core_ios):
                     original_content = content
                     
                     replacements = {
+                        "extension UIView: @MainActor AnyArgument {":
+                        "@MainActor\nextension UIView: AnyArgument {",
+                        
                         "public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, @MainActor AnyExpoSwiftUIHostingView {":
                         "@MainActor\npublic final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, AnyExpoSwiftUIHostingView {",
                         
@@ -275,6 +278,9 @@ if os.path.exists(expo_modules_core_ios):
                             print(f"Applied exact string replacement for @MainActor in {path}")
                     
                     # Fallback regex if we missed something exactly but can still find it safely
+                    if ": @MainActor AnyArgument" in content:
+                        content = content.replace(": @MainActor AnyArgument", ": AnyArgument")
+                        print(f"Applied fallback replacement for @MainActor AnyArgument in {path}")
                     if ", @MainActor AnyExpoSwiftUIHostingView" in content:
                         content = content.replace(", @MainActor AnyExpoSwiftUIHostingView", ", AnyExpoSwiftUIHostingView")
                         print(f"Applied fallback replacement for @MainActor AnyExpoSwiftUIHostingView in {path}")
