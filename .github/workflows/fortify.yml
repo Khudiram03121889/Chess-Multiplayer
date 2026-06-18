@@ -17,10 +17,12 @@ jobs:
     name: 🎉 iOS Build
     runs-on: macos-15
     steps:
-      - name: Select Xcode 16.2
+      - name: Select Xcode 16.2 and install iOS platform
         run: |
           sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
           sudo xcodebuild -runFirstLaunch
+          echo "Downloading iOS 18.2 platform SDK (required by ExpoModulesJSI pre-build script)..."
+          xcodebuild -downloadPlatform iOS -buildVersion 18.2
 
       - name: Checkout repository
         uses: actions/checkout@v4
