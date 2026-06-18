@@ -15,7 +15,9 @@
         "NSMicrophoneUsageDescription": "ChessTime uses your microphone for voice chat during games.",
         "UIBackgroundModes": [
           "audio",
-          "voip"
+          "voip",
+          "fetch",
+          "remote-notification"
         ]
       }
     },
@@ -78,6 +80,9 @@
       "eas": {
         "projectId": "a4ec8cfb-5320-4d37-a778-382214d385d9"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/a4ec8cfb-5320-4d37-a778-382214d385d9"
