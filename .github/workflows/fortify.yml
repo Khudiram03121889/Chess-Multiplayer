@@ -29,6 +29,18 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      - name: Strip expo-dev-client for Release build
+        run: |
+          node -e '
+          const fs = require("fs");
+          const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          if (pkg.dependencies && pkg.dependencies["expo-dev-client"]) {
+            delete pkg.dependencies["expo-dev-client"];
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
+            console.log("Successfully removed expo-dev-client dependency");
+          }
+          '
+
       - name: Install dependencies
         run: npm install
 
