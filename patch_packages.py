@@ -232,7 +232,7 @@ for root, dirs, files in os.walk("node_modules"):
                     content = f.read()
                 
                 target_str = "PropNameID(PropNameID&& other) = default;"
-                replacement_str = "PropNameID(PropNameID&& other) = default;\n  PropNameID(const PropNameID& other) : Pointer(other.getPtr()) {}"
+                replacement_str = "PropNameID(PropNameID&& other) = default;\n  PropNameID(const PropNameID& other) : Pointer((Runtime::PointerValue*)nullptr) { std::terminate(); }"
                 
                 if target_str in content and "PropNameID(const PropNameID& other)" not in content:
                     content = content.replace(target_str, replacement_str)
