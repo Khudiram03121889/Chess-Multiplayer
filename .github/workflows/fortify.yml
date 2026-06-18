@@ -72,6 +72,7 @@ jobs:
                          CODE_SIGNING_REQUIRED=NO \
                          CODE_SIGN_IDENTITY="" \
                          PROVISIONING_PROFILE_REQUIRED=NO \
+                         ACTOOL_VALIDATE_SIMULATOR_PLATFORMS=NO \
                          > xcodebuild.log 2>&1; then
             echo "============================================="
             echo "           XCODEBUILD BUILD FAILED           "
