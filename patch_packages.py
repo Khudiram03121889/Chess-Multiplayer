@@ -120,9 +120,13 @@ for root, dirs, files in os.walk("node_modules"):
                     content_modified = True
                 
                 # Fix consuming keyword in push_back
-                if "JavaScriptRuntime.swift" in path and "vector.push_back(consuming: propNameId)" in content:
-                    content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(consume propNameId)")
-                    content_modified = True
+                if "JavaScriptRuntime.swift" in path:
+                    if "vector.push_back(consuming: propNameId)" in content:
+                        content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(consume propNameId)")
+                        content_modified = True
+                    if "vector.push_back(propNameId)" in content:
+                        content = content.replace("vector.push_back(propNameId)", "vector.push_back(consume propNameId)")
+                        content_modified = True
 
                 # Replace constructor calls with factory method calls in Swift
                 if "JavaScriptRuntime.swift" in path:
