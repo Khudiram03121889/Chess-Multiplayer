@@ -39,7 +39,21 @@ for root, dirs, files in os.walk("node_modules"):
                     print(f"Stripped trailing commas in {path}")
                     content = new_content
                     modified = True
-                
+
+                # 1.6. Strip Swift 6.1-only .enableUpcomingFeature() calls that don't exist in Swift 6.0
+                # These are SE-0461 and SE-0470 proposals only available in Swift 6.1+
+                swift61_features = [
+                    "NonisolatedNonsendingByDefault",
+                    "InferIsolatedConformances",
+                ]
+                for feat in swift61_features:
+                    pattern = r'\s*\.enableUpcomingFeature\("' + feat + r'"\),?\n?'
+                    new_content = re.sub(pattern, "\n", content)
+                    if new_content != content:
+                        print(f"Stripped enableUpcomingFeature({feat}) from {path}")
+                        content = new_content
+                        modified = True
+
                 # 2. Pin apple/swift-collections to 1.1.4 (compatible with Swift 6.1)
                 if "swift-collections" in content and "1.1.4" not in content:
                     print(f"Pinning swift-collections in {path}")
