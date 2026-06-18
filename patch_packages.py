@@ -252,23 +252,42 @@ if os.path.exists(expo_modules_core_ios):
                     
                     original_content = content
                     
-                    # Pattern 1: class A: B, @MainActor C {
-                    content = re.sub(
-                        r'(public\s+final\s+class|final\s+class|public\s+class|class|internal\s+final\s+class)\s+(.*?):\s*(.*?),\s*@MainActor\s+(.*?)\s*\{',
-                        r'@MainActor\n\1 \2: \3, \4 {',
-                        content
-                    )
+                    replacements = {
+                        "public final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, @MainActor AnyExpoSwiftUIHostingView {":
+                        "@MainActor\npublic final class HostingView<Props: ViewProps, ContentView: View<Props>>: ExpoView, AnyExpoSwiftUIHostingView {",
+                        
+                        "final class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, @MainActor ExpoSwiftUIView {":
+                        "@MainActor\nfinal class SwiftUIVirtualView<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjC, ExpoSwiftUIView {",
+                        
+                        "extension ExpoSwiftUI.SwiftUIVirtualView: @MainActor ExpoSwiftUI.ViewWrapper {":
+                        "@MainActor\nextension ExpoSwiftUI.SwiftUIVirtualView: ExpoSwiftUI.ViewWrapper {",
+                        
+                        "final class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, @MainActor ExpoSwiftUIView {":
+                        "@MainActor\nfinal class SwiftUIVirtualViewDev<Props: ViewProps, ContentView: View<Props>>: SwiftUIVirtualViewObjCDev, ExpoSwiftUIView {",
+                        
+                        "extension ExpoSwiftUI.SwiftUIVirtualViewDev: @MainActor ExpoSwiftUI.ViewWrapper {":
+                        "@MainActor\nextension ExpoSwiftUI.SwiftUIVirtualViewDev: ExpoSwiftUI.ViewWrapper {"
+                    }
                     
-                    # Pattern 2: extension A: @MainActor B {
-                    content = re.sub(
-                        r'(public\s+extension|internal\s+extension|extension)\s+(.*?):\s*@MainActor\s+(.*?)\s*\{',
-                        r'@MainActor\n\1 \2: \3 {',
-                        content
-                    )
+                    for old_str, new_str in replacements.items():
+                        if old_str in content:
+                            content = content.replace(old_str, new_str)
+                            print(f"Applied exact string replacement for @MainActor in {path}")
+                    
+                    # Fallback regex if we missed something exactly but can still find it safely
+                    if ", @MainActor AnyExpoSwiftUIHostingView" in content:
+                        content = content.replace(", @MainActor AnyExpoSwiftUIHostingView", ", AnyExpoSwiftUIHostingView")
+                        print(f"Applied fallback replacement for @MainActor AnyExpoSwiftUIHostingView in {path}")
+                    if ", @MainActor ExpoSwiftUIView" in content:
+                        content = content.replace(", @MainActor ExpoSwiftUIView", ", ExpoSwiftUIView")
+                        print(f"Applied fallback replacement for @MainActor ExpoSwiftUIView in {path}")
+                    if ": @MainActor ExpoSwiftUI.ViewWrapper" in content:
+                        content = content.replace(": @MainActor ExpoSwiftUI.ViewWrapper", ": ExpoSwiftUI.ViewWrapper")
+                        print(f"Applied fallback replacement for @MainActor ViewWrapper in {path}")
                     
                     if content != original_content:
                         with open(path, "w", encoding="utf-8") as f:
                             f.write(content)
-                        print(f"Patched @MainActor in {path}")
+                        print(f"Successfully wrote patched @MainActor in {path}")
                 except Exception as e:
                     print(f"Error patching @MainActor in {path}: {e}")
