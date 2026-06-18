@@ -50,9 +50,6 @@ jobs:
       - name: Generate iOS project (without install)
         run: npx expo prebuild --platform ios --no-install
 
-      - name: Patch iOS Xcode Project and lock SPM dependencies
-        run: python3 patch_ios_project.py
-
       - name: Patch Podfile to disable code signing
         run: |
           ruby -e '
@@ -73,6 +70,8 @@ jobs:
           cd ios
           pod install
 
+      - name: Patch iOS Xcode Project and lock SPM dependencies
+        run: python3 patch_ios_project.py
       - name: Build iOS App (Unsigned)
         run: |
           if ! xcodebuild -workspace ios/ChessTimeIOS.xcworkspace \
