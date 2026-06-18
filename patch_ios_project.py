@@ -62,9 +62,45 @@ resolved_content = {
       }
     },
     {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections",
+      "state" : {
+        "revision" : "d029d9d690cb616d61dce466ce78d2b998ccb086",
+        "version" : "1.1.4"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-syntax.git",
+      "state" : {
+        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
+        "version" : "600.0.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-syntax",
+      "state" : {
+        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
+        "version" : "600.0.1"
+      }
+    },
+    {
       "identity" : "swift-syntax",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
+      "state" : {
+        "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
+        "version" : "600.0.1"
+      }
+    },
+    {
+      "identity" : "swift-syntax",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-syntax",
       "state" : {
         "revision" : "0652d58079fa93d0f6226cbbe7071221f7db195b",
         "version" : "600.0.1"
