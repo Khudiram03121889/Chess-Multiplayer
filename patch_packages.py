@@ -22,11 +22,11 @@ for root, dirs, files in os.walk("node_modules"):
                     if len(parts) >= 2:
                         try:
                             major, minor = int(parts[0]), int(parts[1])
-                            if major > 6 or (major == 6 and minor > 1):
-                                print(f"Downgrading tools-version in {path} from {version} to 6.1")
+                            if major > 6 or (major == 6 and minor > 0):
+                                print(f"Downgrading tools-version in {path} from {version} to 6.0")
                                 content = re.sub(
                                     r"^//\s*swift-tools-version:\s*[\d\.]+",
-                                    "// swift-tools-version: 6.1",
+                                    "// swift-tools-version: 6.0",
                                     content
                                 )
                                 modified = True
