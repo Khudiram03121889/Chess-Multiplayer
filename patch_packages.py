@@ -121,7 +121,7 @@ for root, dirs, files in os.walk("node_modules"):
                 
                 # Fix consuming keyword in push_back
                 if "JavaScriptRuntime.swift" in path and "vector.push_back(consuming: propNameId)" in content:
-                    content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(propNameId)")
+                    content = content.replace("vector.push_back(consuming: propNameId)", "vector.push_back(consume propNameId)")
                     content_modified = True
 
                 # Replace constructor calls with factory method calls in Swift
@@ -217,3 +217,23 @@ if os.path.exists(build_script_path):
     except Exception as e:
         print(f"Error patching {build_script_path}: {e}")
 
+# 7. Add dummy copy constructor to PropNameID in jsi.h to satisfy Xcode 16.4 Swift C++ Interop
+print("Patching all jsi.h files for PropNameID dummy copy constructor...")
+for root, dirs, files in os.walk("node_modules"):
+    for file in files:
+        if file == "jsi.h":
+            jsi_path = os.path.join(root, file)
+            try:
+                with open(jsi_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                target_str = "PropNameID(PropNameID&& other) = default;"
+                replacement_str = "PropNameID(PropNameID&& other) = default;\n  PropNameID(const PropNameID& other) : Pointer((Runtime::PointerValue*)nullptr) { std::terminate(); }"
+                
+                if target_str in content and "PropNameID(const PropNameID& other)" not in content:
+                    content = content.replace(target_str, replacement_str)
+                    with open(jsi_path, "w", encoding="utf-8") as f:
+                        f.write(content)
+                    print(f"Patched {jsi_path}")
+            except Exception as e:
+                print(f"Error patching {jsi_path}: {e}")
