@@ -85,7 +85,8 @@ jobs:
                          CODE_SIGN_IDENTITY="" \
                          PROVISIONING_PROFILE_REQUIRED=NO \
                          > xcodebuild.log 2>&1; then
-            echo "XCODEBUILD FAILED"
+            echo "XCODEBUILD FAILED. Here is the log output:"
+            cat xcodebuild.log
             exit 1
           fi
 
