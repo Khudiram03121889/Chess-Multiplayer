@@ -1,17 +1,56 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  RTCPeerConnection,
-  RTCIceCandidate,
-  RTCSessionDescription,
-  mediaDevices,
-  MediaStream,
-  RTCView as RN_RTCView,
-} from 'react-native-webrtc';
-import InCallManager from 'react-native-incall-manager';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View } from 'react-native';
 import { db } from '../firebase/config';
 import { ref, onValue, set, push, remove, onChildAdded } from 'firebase/database';
 
-export const RTCView = RN_RTCView;
+type NativeWebRTCModule = {
+  RTCPeerConnection?: any;
+  RTCIceCandidate?: any;
+  RTCSessionDescription?: any;
+  mediaDevices?: any;
+  MediaStream?: any;
+  RTCView?: React.ComponentType<any>;
+};
+
+const loadNativeWebRTC = (): NativeWebRTCModule | null => {
+  try {
+    return require('react-native-webrtc');
+  } catch (error: any) {
+    console.warn('[WEBRTC] Native WebRTC module unavailable', error?.message || error);
+    return null;
+  }
+};
+
+const loadInCallManager = () => {
+  try {
+    const nativeModule = require('react-native-incall-manager');
+    return nativeModule?.default || nativeModule;
+  } catch (error: any) {
+    console.warn('[WEBRTC] InCallManager unavailable', error?.message || error);
+    return null;
+  }
+};
+
+const webRTCModule = loadNativeWebRTC();
+const inCallManager = loadInCallManager();
+const RTCPeerConnection = webRTCModule?.RTCPeerConnection;
+const RTCIceCandidate = webRTCModule?.RTCIceCandidate;
+const RTCSessionDescription = webRTCModule?.RTCSessionDescription;
+const mediaDevices = webRTCModule?.mediaDevices;
+const MediaStream = webRTCModule?.MediaStream;
+const isWebRTCAvailable = Boolean(
+  RTCPeerConnection &&
+  RTCIceCandidate &&
+  RTCSessionDescription &&
+  mediaDevices?.getUserMedia &&
+  MediaStream
+);
+
+export const RTCView =
+  webRTCModule?.RTCView ||
+  function RTCUnavailableView(props: any) {
+    return React.createElement(View, { style: props.style });
+  };
 
 const ICE_SERVERS = {
   iceServers: [
@@ -115,7 +154,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
   const [remoteStream, setRemoteStream] = useState<any>(null);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
-  const pc = useRef<RTCPeerConnection | null>(null);
+  const pc = useRef<any | null>(null);
   const pendingCandidates = useRef<any[]>([]);
   const localStreamRef = useRef<any>(null);
   const remoteStreamRef = useRef<any>(null);
@@ -149,7 +188,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
 
   const forceLoudSpeakerRoute = useCallback((reason: string) => {
     try {
-      InCallManager.setForceSpeakerphoneOn(true);
+      inCallManager?.setForceSpeakerphoneOn?.(true);
       console.log("[WEBRTC]", "LOUD SPEAKER ROUTE FORCED", { reason });
     } catch (err: any) {
       console.warn("[WEBRTC] Failed to force loud speaker route", err?.message || err);
@@ -160,7 +199,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
     try {
       if (!inCallAudioRouteActiveRef.current) {
         inCallAudioRouteActiveRef.current = true;
-        InCallManager.start({ media: 'video' });
+        inCallManager?.start?.({ media: 'video' });
         console.log("[WEBRTC]", "INCALL MANAGER STARTED", { reason, media: 'video' });
       }
 
@@ -179,7 +218,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
     if (!inCallAudioRouteActiveRef.current) return;
 
     try {
-      InCallManager.stop({ busytone: '_DTMF_' });
+      inCallManager?.stop?.({ busytone: '_DTMF_' });
       console.log("[WEBRTC]", "INCALL MANAGER STOPPED", { reason });
     } catch (err: any) {
       console.warn("[WEBRTC] Failed to stop InCallManager", err?.message || err);
@@ -320,6 +359,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
 
   const addCandidate = useCallback(async (candidateData: any, incomingOfferSessionId?: string) => {
     if (!candidateData) return;
+    if (!RTCIceCandidate) return;
     
     if (isAnswerInitializing.current) {
       console.log("[WEBRTC]", "candidate queued because answer initializing");
@@ -349,7 +389,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
           candidate: candidateData,
           candidateType: getCandidateType(candidateData),
         });
-      }).catch((err) => {
+      }).catch((err: any) => {
         webrtcLog("addIceCandidate", currentPc, {
           phase: "error",
           candidate: candidateData,
@@ -369,6 +409,10 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
   }, []);
 
   const flushPendingCandidates = useCallback(async () => {
+    if (!RTCIceCandidate) {
+      pendingCandidates.current = [];
+      return;
+    }
     const toFlush = [...pendingCandidates.current];
     pendingCandidates.current = [];
     for (const candidate of toFlush) {
@@ -386,7 +430,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
           candidate,
           candidateType: getCandidateType(candidate),
         });
-      }).catch((err) => {
+      }).catch((err: any) => {
         webrtcLog("addIceCandidate", currentPc, {
           phase: "error",
           candidate,
@@ -398,6 +442,9 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
   }, []);
 
   const initPc = useCallback(async (colorToInit: 'w' | 'b', streamToUse: any, reason = "unspecified") => {
+    if (!isWebRTCAvailable) {
+      throw new Error('Native WebRTC is unavailable in this build.');
+    }
     const savedCandidates = [...pendingCandidates.current];
     console.log("[WEBRTC]", "pending candidates saved", { count: savedCandidates.length });
     closePc(true, `initPc replacing peer connection: ${reason}`);
@@ -607,7 +654,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
 
   const doAnswer = useCallback(async (offerData: any) => {
     if (!rtcPath) return;
-    const incomingSessionId = offerData._sessionId;
+    const incomingSessionId = offerData._sessionId || 'legacy-session';
     console.log("[WEBRTC_DIAGNOSTIC]", "answer session starting", { offerSessionId: incomingSessionId, pcId: currentPcId.current });
 
     isAnswerInitializing.current = true;
@@ -671,6 +718,11 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
 
   const toggleCamera = useCallback(async () => {
     if (!gameId || !myColor) return;
+    if (!isWebRTCAvailable) {
+      console.warn('[WEBRTC] Camera requested, but native WebRTC is unavailable in this build.');
+      setCameraEnabled(false);
+      return;
+    }
 
     if (cameraEnabled) {
       if (localStreamRef.current) {
@@ -737,7 +789,7 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!gameId || !myColor || !rtcPath) return;
+    if (!gameId || !myColor || !rtcPath || !isWebRTCAvailable) return;
 
     cleanupListeners();
 
@@ -806,5 +858,5 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
     };
   }, [cleanupListeners, cleanupNegotiationListeners, closePc, stopInCallAudioRoute]);
 
-  return { localStream, remoteStream, cameraEnabled, audioMuted, toggleCamera, toggleAudioMute };
+  return { localStream, remoteStream, cameraEnabled, audioMuted, toggleCamera, toggleAudioMute, webRTCAvailable: isWebRTCAvailable };
 }

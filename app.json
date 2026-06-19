@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "ios": {
       "bundleIdentifier": "com.sameer.chesstimeios",
       "supportsTablet": true,
@@ -13,12 +14,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "ChessTime uses your camera for video chat during games.",
         "NSMicrophoneUsageDescription": "ChessTime uses your microphone for voice chat during games.",
-        "UIBackgroundModes": [
-          "audio",
-          "voip",
-          "fetch",
-          "remote-notification"
-        ]
+        "NSPhotoLibraryUsageDescription": "ChessTime lets you choose a profile photo from your library.",
+        "NSPhotoLibraryAddUsageDescription": "ChessTime may save edited profile photos to your library if you choose to export them."
       }
     },
     "android": {
@@ -63,6 +60,9 @@
       [
         "expo-build-properties",
         {
+          "ios": {
+            "deploymentTarget": "16.4"
+          },
           "android": {
             "minSdkVersion": 24,
             "packagingOptions": {
@@ -74,7 +74,8 @@
           }
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-font"
     ],
     "extra": {
       "eas": {

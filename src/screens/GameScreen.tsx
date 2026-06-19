@@ -250,6 +250,7 @@ export default function GameScreen() {
 
     const seatsRef = ref(db, `games/${gameId}/seats`);
     let isMounted = true;
+    let unsubscribeSeats: (() => void) | null = null;
 
     // We do a simple claim seat implementation for React Native
     const claimSeat = async () => {
@@ -309,7 +310,7 @@ export default function GameScreen() {
            }
         }
 
-        onValue(seatsRef, (snap) => {
+        unsubscribeSeats = onValue(seatsRef, (snap) => {
           if (!isMounted) return;
           const seats = snap.val() || {};
           const isLive = (s: any) => s && s.connectedAt && (getServerTime() - s.connectedAt < 30000);
@@ -361,6 +362,7 @@ export default function GameScreen() {
     return () => {
       isMounted = false;
       clearInterval(heartbeatInterval);
+      if (unsubscribeSeats) unsubscribeSeats();
       if (myColorRef.current) {
         set(ref(db, `games/${gameId}/seats/${myColorRef.current}`), null);
       }
@@ -534,12 +536,15 @@ export default function GameScreen() {
     return () => unsubscribe();
   }, [gameId, chess, myColor, opponentInfo]);
 
+  const turnRef = useRef(chess.turn());
+  turnRef.current = chess.turn();
+
   // Timer Interval
   useEffect(() => {
     if (!gameStarted || chess.isGameOver() || yappingPaused) return;
 
     const interval = setInterval(() => {
-      if (chess.turn() === 'w') {
+      if (turnRef.current === 'w') {
         setWhiteTime(prev => {
           if (prev <= 1) {
             update(ref(db, `games/${gameId}`), { gameOver: true, result: 'Black wins on time' });
@@ -560,7 +565,7 @@ export default function GameScreen() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [gameStarted, chess.fen(), chess.isGameOver(), gameId]);
+  }, [gameStarted, chess.isGameOver(), yappingPaused, gameId]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);

@@ -74,7 +74,7 @@ export default function App() {
     setAudioModeAsync({
       playsInSilentMode: true,
       allowsRecording: true,
-      shouldPlayInBackground: true,
+      shouldPlayInBackground: false,
       interruptionMode: 'mixWithOthers',
     }).catch((err) => {
       console.warn("Failed to set audio mode:", err);
