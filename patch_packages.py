@@ -210,9 +210,11 @@ if os.path.exists(build_script_path):
         with open(build_script_path, "r", encoding="utf-8") as f:
             content = f.read()
         
-        # Remove -quiet flag
+        # Remove -quiet flag carefully to not break shell line continuation
         if "-quiet \\" in content:
-            content = content.replace("-quiet \\", "")
+            # We replace the entire line including its newline
+            import re
+            content = re.sub(r"^[ \t]*-quiet \\\r?\n", "", content, flags=re.MULTILINE)
             print(f"Removed -quiet from {build_script_path}")
 
         target_str = "SWIFT_COMPILATION_MODE=wholemodule \\"
@@ -222,11 +224,11 @@ if os.path.exists(build_script_path):
             # First remove any previous patch of OTHER_CPLUSPLUSFLAGS to ensure clean replacement
             old_patch = "SWIFT_COMPILATION_MODE=wholemodule \\\n    OTHER_CPLUSPLUSFLAGS='$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0 -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION -std=c++20' \\"
             content = content.replace(old_patch, target_str)
-            
             content = content.replace(target_str, replacement_str)
-            with open(build_script_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            print(f"Patched {build_script_path}")
+
+        with open(build_script_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content)
+        print(f"Patched {build_script_path}")
     except Exception as e:
         print(f"Error patching {build_script_path}: {e}")
 
