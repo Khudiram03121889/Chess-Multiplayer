@@ -1,7 +1,7 @@
 name: iOS-ipa-build
 
 env:
-  EXPO_USE_PRECOMPILED_MODULES: 0
+  EXPO_USE_PRECOMPILED_MODULES: 1
 
 permissions:
   contents: write
