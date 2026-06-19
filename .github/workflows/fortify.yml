@@ -50,17 +50,56 @@ jobs:
       - name: TypeScript check
         run: npx tsc --noEmit
 
-      - name: Setup EAS
-        uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Generate iOS project (without install)
+        run: npx expo prebuild --platform ios --no-install
 
-      - name: Build iOS App via EAS
+      - name: Patch Podfile to disable code signing
         run: |
-          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "EXPO_TOKEN is missing. Please set it in GitHub Secrets to build."
-            echo "Alternatively, read DISTRIBUTION_GUIDE.md to build locally."
-            exit 0
+          ruby -e '
+          podfile = File.read("ios/Podfile")
+          if podfile.include?("post_install do |installer|")
+            code_signing_logic = "  installer.pods_project.targets.each do |target|\n    target.build_configurations.each do |config|\n      config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n      config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n      config.build_settings[\"SDKROOT\"] = \"iphoneos\"\n      config.build_settings[\"SUPPORTED_PLATFORMS\"] = \"iphoneos\"\n      config.build_settings[\"CLANG_CXX_LANGUAGE_STANDARD\"] = \"c++20\"\n      config.build_settings[\"SWIFT_STRICT_CONCURRENCY\"] = \"minimal\"\n      config.build_settings[\"SWIFT_VERSION\"] = \"5.0\"\n    end\n  end\n  installer.aggregate_targets.each do |target|\n    target.user_project.targets.each do |proj_target|\n      proj_target.build_configurations.each do |config|\n        config.build_settings[\"CODE_SIGNING_ALLOWED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGNING_REQUIRED\"] = \"NO\"\n        config.build_settings[\"CODE_SIGN_IDENTITY\"] = \"\"\n        config.build_settings[\"SDKROOT\"] = \"iphoneos\"\n        config.build_settings[\"SUPPORTED_PLATFORMS\"] = \"iphoneos\"\n        config.build_settings[\"CLANG_CXX_LANGUAGE_STANDARD\"] = \"c++20\"\n        config.build_settings[\"SWIFT_STRICT_CONCURRENCY\"] = \"minimal\"\n        config.build_settings[\"SWIFT_VERSION\"] = \"5.0\"\n      end\n    end\n    target.user_project.save\n  end"
+            podfile = podfile.sub("post_install do |installer|", "post_install do |installer|\n#{code_signing_logic}")
+            File.write("ios/Podfile", podfile)
+            puts "Successfully patched Podfile"
+          else
+            puts "Could not find post_install in Podfile"
+            exit 1
+          end
+          '
+
+      - name: Install Pods
+        run: |
+          cd ios
+          pod install
+
+      - name: Build Unsigned iOS App for Physical Devices
+        run: |
+          if ! xcodebuild -workspace ios/ChessTimeIOS.xcworkspace \
+                         -scheme ChessTimeIOS \
+                         -configuration Release \
+                         -sdk iphoneos \
+                         -derivedDataPath build \
+                         CODE_SIGNING_ALLOWED=NO \
+                         CODE_SIGNING_REQUIRED=NO \
+                         CODE_SIGN_IDENTITY="" \
+                         PROVISIONING_PROFILE_REQUIRED=NO \
+                         > xcodebuild.log 2>&1; then
+            echo "XCODEBUILD FAILED"
+            exit 1
           fi
-          eas build --platform ios --profile preview --non-interactive
+
+      - name: Package Unsigned IPA
+        run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/ChessTimeIOS.app Payload/
+          zip -qq -r -9 ChessTimeIOS-Unsigned.ipa Payload
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ChessTimeIOS-Unsigned.ipa
+          tag: v1.0
+          overwrite: true
+          body: "Unsigned IPA for Physical iPhones (Install via Sideloadly)"
