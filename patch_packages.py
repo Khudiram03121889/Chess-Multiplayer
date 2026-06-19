@@ -202,7 +202,7 @@ for root, dirs, files in os.walk("node_modules"):
                 pass
 print(f"Fixed {cpp_patched} C++ header file(s).")
 
-# 6. Patch build-xcframework.sh in expo-modules-jsi to include OTHER_CPLUSPLUSFLAGS
+# 6. Patch build-xcframework.sh in expo-modules-jsi to include OTHER_CPLUSPLUSFLAGS and CODE_SIGNING_ALLOWED=NO
 print("Patching build-xcframework.sh in expo-modules-jsi...")
 build_script_path = os.path.join("node_modules", "expo-modules-jsi", "apple", "scripts", "build-xcframework.sh")
 if os.path.exists(build_script_path):
@@ -211,9 +211,13 @@ if os.path.exists(build_script_path):
             content = f.read()
         
         target_str = "SWIFT_COMPILATION_MODE=wholemodule \\"
-        replacement_str = "SWIFT_COMPILATION_MODE=wholemodule \\\n    OTHER_CPLUSPLUSFLAGS='$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0 -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION -std=c++20' \\"
+        replacement_str = "SWIFT_COMPILATION_MODE=wholemodule \\\n    CODE_SIGNING_ALLOWED=NO \\\n    CODE_SIGNING_REQUIRED=NO \\\n    CODE_SIGN_IDENTITY=\"\" \\\n    OTHER_CPLUSPLUSFLAGS='$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0 -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION -std=c++20' \\"
         
-        if target_str in content and "OTHER_CPLUSPLUSFLAGS" not in content:
+        if target_str in content and "CODE_SIGNING_ALLOWED=NO" not in content:
+            # First remove any previous patch of OTHER_CPLUSPLUSFLAGS to ensure clean replacement
+            old_patch = "SWIFT_COMPILATION_MODE=wholemodule \\\n    OTHER_CPLUSPLUSFLAGS='$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0 -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION -std=c++20' \\"
+            content = content.replace(old_patch, target_str)
+            
             content = content.replace(target_str, replacement_str)
             with open(build_script_path, "w", encoding="utf-8") as f:
                 f.write(content)
