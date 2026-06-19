@@ -97,13 +97,13 @@ jobs:
       - name: Package Simulator App
         run: |
           cd build/Build/Products/Release-iphonesimulator
-          zip -qq -r -9 ../../../../ChessTimeIOS-Simulator.zip ChessTimeIOS.app
+          tar -czf ../../../../ChessTimeIOS-Simulator.tar.gz ChessTimeIOS.app
 
       - name: Upload binaries to release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ChessTimeIOS-Simulator.zip
+          file: ChessTimeIOS-Simulator.tar.gz
           tag: v1.0
           overwrite: true
           body: "Simulator App Bundle (Upload to Appetize.io)"
