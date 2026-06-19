@@ -202,7 +202,7 @@ for root, dirs, files in os.walk("node_modules"):
                 pass
 print(f"Fixed {cpp_patched} C++ header file(s).")
 
-# 6. Patch build-xcframework.sh in expo-modules-jsi to include OTHER_CPLUSPLUSFLAGS and CODE_SIGNING_ALLOWED=NO
+# 6. Patch build-xcframework.sh in expo-modules-jsi to include OTHER_CPLUSPLUSFLAGS, disable code signing, and remove -quiet
 print("Patching build-xcframework.sh in expo-modules-jsi...")
 build_script_path = os.path.join("node_modules", "expo-modules-jsi", "apple", "scripts", "build-xcframework.sh")
 if os.path.exists(build_script_path):
@@ -210,6 +210,11 @@ if os.path.exists(build_script_path):
         with open(build_script_path, "r", encoding="utf-8") as f:
             content = f.read()
         
+        # Remove -quiet flag
+        if "-quiet \\" in content:
+            content = content.replace("-quiet \\", "")
+            print(f"Removed -quiet from {build_script_path}")
+
         target_str = "SWIFT_COMPILATION_MODE=wholemodule \\"
         replacement_str = "SWIFT_COMPILATION_MODE=wholemodule \\\n    CODE_SIGNING_ALLOWED=NO \\\n    CODE_SIGNING_REQUIRED=NO \\\n    CODE_SIGN_IDENTITY=\"\" \\\n    OTHER_CPLUSPLUSFLAGS='$(inherited) -D_LIBCPP_ENABLE_HARDENED_MODE=0 -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION -std=c++20' \\"
         
