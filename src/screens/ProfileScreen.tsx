@@ -157,11 +157,12 @@ export default function ProfileScreen() {
               <DateTimePicker
                 value={reunionDate || new Date()}
                 mode="date"
-                display="default"
+                display={Platform.OS === 'ios' ? 'inline' : 'default'}
                 onChange={(event, selectedDate) => {
                   setShowDatePicker(Platform.OS === 'ios');
                   if (selectedDate) setReunionDate(selectedDate);
                 }}
+                themeVariant="dark"
               />
             )}
           </View>

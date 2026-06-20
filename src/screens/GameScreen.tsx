@@ -162,6 +162,7 @@ export default function GameScreen() {
   const [quickConvo, setQuickConvo] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const showChatRef = useRef(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
   const myColorRef = useRef<'w' | 'b' | null>(null);
@@ -370,27 +371,31 @@ export default function GameScreen() {
   }, [gameId]);
 
   // Listen for chat messages to update unread count
+  // Uses showChatRef to avoid re-creating the listener on every open/close
   useEffect(() => {
     if (!gameId || isBotMode) return;
     const chatRef = ref(db, `games/${gameId}/chat`);
+    const currentUserId = auth.currentUser?.uid;
     let isInitialLoad = true;
     const unsubscribe = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
-      if (data) {
-        const msgCount = Object.keys(data).length;
-        if (isInitialLoad) {
-           chatMsgCountRef.current = msgCount;
-           isInitialLoad = false;
-        } else {
-           if (!showChat && msgCount > chatMsgCountRef.current) {
-             setUnreadChatCount(prev => prev + (msgCount - chatMsgCountRef.current));
-           }
-           chatMsgCountRef.current = msgCount;
+      if (!data) return;
+      // Count only opponent messages
+      const opponentMsgCount = currentUserId
+        ? Object.values(data).filter((m: any) => m.senderId !== currentUserId).length
+        : Object.keys(data).length;
+      if (isInitialLoad) {
+        chatMsgCountRef.current = opponentMsgCount;
+        isInitialLoad = false;
+      } else {
+        if (!showChatRef.current && opponentMsgCount > chatMsgCountRef.current) {
+          setUnreadChatCount(prev => prev + (opponentMsgCount - chatMsgCountRef.current));
         }
+        chatMsgCountRef.current = opponentMsgCount;
       }
     });
     return () => unsubscribe();
-  }, [gameId, isBotMode, showChat]);
+  }, [gameId, isBotMode]);
 
   // Active Game Tracking
   useEffect(() => {
@@ -1022,7 +1027,7 @@ export default function GameScreen() {
           </Text>
         </TouchableOpacity>
         <View style={styles.headerRight}>
-          <TouchableOpacity onPress={() => { setShowChat(true); setUnreadChatCount(0); }} style={styles.chatBtn}>
+          <TouchableOpacity onPress={() => { showChatRef.current = true; setShowChat(true); setUnreadChatCount(0); }} style={styles.chatBtn}>
             <View>
               <Ionicons name="chatbubbles-outline" size={24} color={theme.colors.primary} />
               {unreadChatCount > 0 && (
@@ -1188,7 +1193,7 @@ export default function GameScreen() {
       )}
 
       {showChat && (
-        <ChatPanel gameId={gameId} onClose={() => setShowChat(false)} />
+        <ChatPanel gameId={gameId} onClose={() => { showChatRef.current = false; setShowChat(false); setUnreadChatCount(0); }} />
       )}
 
       {isBotMode && (

@@ -57,7 +57,10 @@ const ICE_SERVERS = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
-  ]
+  ],
+  sdpSemantics: 'unified-plan',
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require'
 };
 
 const trackCount = (tracks: any[] | undefined) => tracks?.filter(Boolean).length || 0;
@@ -494,10 +497,12 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
           muted: event.track.muted,
           readyState: event.track.readyState,
         });
+        setTimeout(() => forceLoudSpeakerRoute("remote audio track received"), 500);
       }
 
+      // Always create a fresh MediaStream reference on iOS so RTCView re-renders
       if (event.streams && event.streams.length > 0) {
-        setRemote(event.streams[0]);
+        setRemote(new MediaStream(event.streams[0].getTracks()));
       } else if (event.track) {
         const currentStream = remoteStreamRef.current;
         if (!currentStream) {
@@ -506,8 +511,8 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
           const hasTrack = currentStream.getTracks().some((t: any) => t.id === event.track.id);
           if (!hasTrack) {
             currentStream.addTrack(event.track);
-            setRemote(new MediaStream(currentStream.getTracks()));
           }
+          setRemote(new MediaStream(currentStream.getTracks()));
         }
       }
     };
@@ -551,6 +556,9 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
       }
       console.log("[WEBRTC]", "PC STATE", (newPc as any).connectionState);
       console.log("[WEBRTC]", "PC STATE TRANSITION", connectionStateSequence.current.join(" -> "));
+      if (state === 'connected') {
+        setTimeout(() => forceLoudSpeakerRoute("PC state connected"), 500);
+      }
       closeFailedConnection();
     };
 
@@ -563,6 +571,9 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
       }
       console.log("[WEBRTC]", "ICE STATE", (newPc as any).iceConnectionState);
       console.log("[WEBRTC]", "ICE STATE TRANSITION", iceConnectionStateSequence.current.join(" -> "));
+      if (state === 'connected') {
+        setTimeout(() => forceLoudSpeakerRoute("ICE state connected"), 500);
+      }
       closeFailedConnection();
     };
 
@@ -597,22 +608,29 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
     try {
       cleanupNegotiationListeners();
       pendingCandidates.current = [];
-      const streamToUse = await waitForLocalVideoTrack("createOffer");
-      if (!streamToUse) return;
+      let streamToUse = null;
+      if (cameraInitPromise.current || hasLiveVideoTrack(localStreamRef.current)) {
+        streamToUse = await waitForLocalVideoTrack("createOffer");
+      } else {
+        streamToUse = localStreamRef.current;
+      }
       cameraLog("negotiation starting", { role: "offerer" });
       const newPc = await initPc('w', streamToUse, `doOffer: ${reason}`);
-      const localVideoSenderCount = getLocalVideoSenderCount(newPc);
-      if (localVideoSenderCount < 1) {
-        cameraLog("waiting for local video track", {
-          reason: "createOffer",
-          peerConnectionLocalVideoSenders: localVideoSenderCount,
-        });
-        closePc(true, "createOffer blocked: peer connection has no local video sender");
-        return;
-        }
 
-        console.log("[WEBRTC]", "targeted cleanup start");
-        await set(ref(db, `${rtcPath}/ice-w`), null);
+      if (typeof newPc.addTransceiver === 'function') {
+        try {
+          const senders = newPc.getSenders() || [];
+          const hasAudio = senders.some((s: any) => s.track && s.track.kind === 'audio');
+          const hasVideo = senders.some((s: any) => s.track && s.track.kind === 'video');
+          if (!hasAudio) newPc.addTransceiver('audio', { direction: 'recvonly' });
+          if (!hasVideo) newPc.addTransceiver('video', { direction: 'recvonly' });
+        } catch (e) {
+          console.warn("addTransceiver failed", e);
+        }
+      }
+
+      console.log("[WEBRTC]", "targeted cleanup start");
+      await set(ref(db, `${rtcPath}/ice-w`), null);
         await set(ref(db, `${rtcPath}/ice-b`), null);
         await set(ref(db, `${rtcPath}/answer`), null);
         console.log("[WEBRTC]", "targeted cleanup complete");
@@ -658,11 +676,13 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
     console.log("[WEBRTC_DIAGNOSTIC]", "answer session starting", { offerSessionId: incomingSessionId, pcId: currentPcId.current });
 
     isAnswerInitializing.current = true;
-    const streamToUse = await waitForLocalVideoTrack("createAnswer");
-    if (!streamToUse) {
-      isAnswerInitializing.current = false;
-      return;
+    let streamToUse = null;
+    if (cameraInitPromise.current || hasLiveVideoTrack(localStreamRef.current)) {
+      streamToUse = await waitForLocalVideoTrack("createAnswer");
+    } else {
+      streamToUse = localStreamRef.current;
     }
+    
     cameraLog("negotiation starting", { role: "answerer" });
     const newPc = await initPc('b', streamToUse, "doAnswer received Firebase offer");
     isAnswerInitializing.current = false;
@@ -670,14 +690,16 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
     
     console.log("[WEBRTC_DIAGNOSTIC]", "answer session pc initialized", { offerSessionId: incomingSessionId, pcId: currentPcId.current });
 
-    const localVideoSenderCount = getLocalVideoSenderCount(newPc);
-    if (localVideoSenderCount < 1) {
-      cameraLog("waiting for local video track", {
-        reason: "createAnswer",
-        peerConnectionLocalVideoSenders: localVideoSenderCount,
-      });
-      closePc(true, "createAnswer blocked: peer connection has no local video sender");
-      return;
+    if (typeof newPc.addTransceiver === 'function') {
+      try {
+        const senders = newPc.getSenders() || [];
+        const hasAudio = senders.some((s: any) => s.track && s.track.kind === 'audio');
+        const hasVideo = senders.some((s: any) => s.track && s.track.kind === 'video');
+        if (!hasAudio) newPc.addTransceiver('audio', { direction: 'recvonly' });
+        if (!hasVideo) newPc.addTransceiver('video', { direction: 'recvonly' });
+      } catch (e) {
+        console.warn("addTransceiver failed", e);
+      }
     }
     
     webrtcLog("setRemoteDescription", newPc, { phase: "before", description: offerData, sdpType: offerData.type });
