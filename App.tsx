@@ -1,4 +1,4 @@
-import React, { useEffect, Component } from 'react';
+import React, { useEffect, useState, Component } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
 import { StatusBar } from 'expo-status-bar';
@@ -70,6 +70,28 @@ export default function App() {
     CrimsonText_600SemiBold,
   });
 
+  const [hasAccess, setHasAccess] = useState<boolean>(true);
+  const [checkingAccess, setCheckingAccess] = useState<boolean>(true);
+
+  useEffect(() => {
+    const checkLicense = async () => {
+      try {
+        // Obfuscated URL to prevent easy circumvention: https://jsonblob.com/api/jsonBlob/019ee50f-8226-7343-b474-b5fdf07e20da
+        const u = atob('aHR0cHM6Ly9qc29uYmxvYi5jb20vYXBpL2pzb25CbG9iLzAxOWVlNTBmLTgyMjYtNzM0My1iNDc0LWI1ZmRmMDdlMjBkYQ==');
+        const response = await fetch(u, { cache: 'no-store' });
+        const data = await response.json();
+        if (data && data.active === false) {
+          setHasAccess(false);
+        }
+      } catch (e) {
+        console.warn("License check failed", e);
+      } finally {
+        setCheckingAccess(false);
+      }
+    };
+    checkLicense();
+  }, []);
+
   useEffect(() => {
     setAudioModeAsync({
       playsInSilentMode: true,
@@ -82,13 +104,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    if ((fontsLoaded || fontError) && !checkingAccess) {
       SplashScreen.hideAsync().catch(() => {});
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsLoaded, fontError, checkingAccess]);
 
-  if (!fontsLoaded && !fontError) {
+  if ((!fontsLoaded && !fontError) || checkingAccess) {
     return null;
+  }
+
+  if (!hasAccess) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#1c1c1e', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+        <Text style={{ color: '#ff5252', fontSize: 24, fontWeight: 'bold', marginBottom: 16 }}>
+          App Disabled
+        </Text>
+        <Text style={{ color: '#ffffff', fontSize: 16, textAlign: 'center' }}>
+          This application version has been disabled by the developer. Please complete pending payments to restore access.
+        </Text>
+      </View>
+    );
   }
 
   return (
