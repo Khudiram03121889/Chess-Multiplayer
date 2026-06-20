@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View } from 'react-native';
+import { View, Alert } from 'react-native';
 import { db } from '../firebase/config';
 import { ref, onValue, set, push, remove, onChildAdded } from 'firebase/database';
 
@@ -57,6 +57,22 @@ const ICE_SERVERS = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
+    // TURN servers ensure connectivity on cellular and restricted networks
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      password: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      password: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      password: 'openrelayproject'
+    }
   ],
   sdpSemantics: 'unified-plan',
   bundlePolicy: 'max-bundle',
@@ -622,18 +638,31 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
           const senders = newPc.getSenders() || [];
           const hasAudio = senders.some((s: any) => s.track && s.track.kind === 'audio');
           const hasVideo = senders.some((s: any) => s.track && s.track.kind === 'video');
-          if (!hasAudio) newPc.addTransceiver('audio', { direction: 'recvonly' });
-          if (!hasVideo) newPc.addTransceiver('video', { direction: 'recvonly' });
+          
+          // Use sendrecv if we have a track, otherwise recvonly to wait for remote
+          if (!hasAudio) {
+            newPc.addTransceiver('audio', { direction: 'recvonly' });
+          } else {
+            const audioTransceiver = newPc.getTransceivers().find((t: any) => t.receiver.track.kind === 'audio');
+            if (audioTransceiver) audioTransceiver.direction = 'sendrecv';
+          }
+          
+          if (!hasVideo) {
+            newPc.addTransceiver('video', { direction: 'recvonly' });
+          } else {
+            const videoTransceiver = newPc.getTransceivers().find((t: any) => t.receiver.track.kind === 'video');
+            if (videoTransceiver) videoTransceiver.direction = 'sendrecv';
+          }
         } catch (e) {
           console.warn("addTransceiver failed", e);
         }
       }
 
       console.log("[WEBRTC]", "targeted cleanup start");
-      await set(ref(db, `${rtcPath}/ice-w`), null);
-        await set(ref(db, `${rtcPath}/ice-b`), null);
-        await set(ref(db, `${rtcPath}/answer`), null);
-        console.log("[WEBRTC]", "targeted cleanup complete");
+      // Only clear our own previous state and the answer
+      await set(ref(db, `${rtcPath}/ice-${myColor === 'w' ? 'w' : 'b'}`), null);
+      await set(ref(db, `${rtcPath}/answer`), null);
+      console.log("[WEBRTC]", "targeted cleanup complete");
 
         const newOfferSessionId = Math.random().toString(36).substring(7);
       offerSessionId.current = newOfferSessionId;
@@ -695,8 +724,20 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
         const senders = newPc.getSenders() || [];
         const hasAudio = senders.some((s: any) => s.track && s.track.kind === 'audio');
         const hasVideo = senders.some((s: any) => s.track && s.track.kind === 'video');
-        if (!hasAudio) newPc.addTransceiver('audio', { direction: 'recvonly' });
-        if (!hasVideo) newPc.addTransceiver('video', { direction: 'recvonly' });
+        
+        if (!hasAudio) {
+          newPc.addTransceiver('audio', { direction: 'recvonly' });
+        } else {
+          const audioTransceiver = newPc.getTransceivers().find((t: any) => t.receiver.track.kind === 'audio');
+          if (audioTransceiver) audioTransceiver.direction = 'sendrecv';
+        }
+        
+        if (!hasVideo) {
+          newPc.addTransceiver('video', { direction: 'recvonly' });
+        } else {
+          const videoTransceiver = newPc.getTransceivers().find((t: any) => t.receiver.track.kind === 'video');
+          if (videoTransceiver) videoTransceiver.direction = 'sendrecv';
+        }
       } catch (e) {
         console.warn("addTransceiver failed", e);
       }
@@ -793,10 +834,21 @@ export function useWebRTC(gameId: string | null, myColor: 'w' | 'b' | null) {
       });
       console.log("[WEBRTC]", "reason for renegotiation", { reason: "toggleCamera: camera enabled" });
       await signalRenegotiation();
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Camera failed', err);
       setCameraEnabled(false);
       stopInCallAudioRoute("toggleCamera: camera failed");
+      
+      const errorMsg = err?.message || String(err);
+      if (errorMsg.includes('Permission') || errorMsg.includes('denied')) {
+        Alert.alert(
+          "Permission Denied",
+          "ChessTime needs access to your camera and microphone for video chat. Please enable them in iOS Settings > ChessTime.",
+          [{ text: "OK" }]
+        );
+      } else {
+        Alert.alert("Media Error", "Could not start camera or microphone. Please ensure they are not being used by another app.");
+      }
     } finally {
       cameraInitPromise.current = null;
     }

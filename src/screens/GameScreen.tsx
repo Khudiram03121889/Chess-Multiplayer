@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert, Share, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, Alert, Share, Image, Vibration } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, getGlowStyle } from '../theme/theme';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -16,6 +16,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { WebView } from 'react-native-webview';
 import { createAudioPlayer } from 'expo-audio';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+
 
 type GameScreenRouteProp = RouteProp<RootStackParamList, 'Game'>;
 
@@ -176,6 +179,7 @@ export default function GameScreen() {
   const lastUndoResponseRef = useRef<number>(0);
   const matchHistoryRecorded = useRef(false);
   const chatMsgCountRef = useRef(0);
+  const lastReadTimestampRef = useRef<number>(0);
   const timeControlRef = useRef<string>('10m');
   const { localStream, remoteStream, cameraEnabled, audioMuted, toggleCamera, toggleAudioMute } = useWebRTC(isBotMode ? null : gameId, myColor);
 
@@ -370,32 +374,75 @@ export default function GameScreen() {
     };
   }, [gameId]);
 
+  // Initialize last read timestamp from storage
+  useEffect(() => {
+    if (!gameId || isBotMode) return;
+    const loadLastRead = async () => {
+      try {
+        const val = await AsyncStorage.getItem(`chat_last_read_${gameId}`);
+        if (val) {
+          lastReadTimestampRef.current = parseInt(val, 10);
+        }
+      } catch (e) {
+        console.warn("Failed to load last read chat timestamp", e);
+      }
+    };
+    loadLastRead();
+  }, [gameId, isBotMode]);
+
   // Listen for chat messages to update unread count
   // Uses showChatRef to avoid re-creating the listener on every open/close
   useEffect(() => {
     if (!gameId || isBotMode) return;
     const chatRef = ref(db, `games/${gameId}/chat`);
     const currentUserId = auth.currentUser?.uid;
-    let isInitialLoad = true;
+
     const unsubscribe = onValue(chatRef, (snapshot) => {
       const data = snapshot.val();
-      if (!data) return;
-      // Count only opponent messages
-      const opponentMsgCount = currentUserId
-        ? Object.values(data).filter((m: any) => m.senderId !== currentUserId).length
-        : Object.keys(data).length;
-      if (isInitialLoad) {
-        chatMsgCountRef.current = opponentMsgCount;
-        isInitialLoad = false;
+      if (!data) {
+        setUnreadChatCount(0);
+        return;
+      }
+      
+      const messages = Object.values(data) as any[];
+      // Count opponent messages newer than our last read timestamp
+      const unread = messages.filter((m: any) => 
+        m.senderId !== currentUserId && 
+        (m.timestamp > lastReadTimestampRef.current)
+      ).length;
+
+      if (!showChatRef.current) {
+        setUnreadChatCount(prev => {
+          if (unread > prev) {
+            try { Vibration.vibrate(200); } catch(e) {}
+          }
+          return unread;
+        });
       } else {
-        if (!showChatRef.current && opponentMsgCount > chatMsgCountRef.current) {
-          setUnreadChatCount(prev => prev + (opponentMsgCount - chatMsgCountRef.current));
+        // If chat is open, we mark all current messages as read
+        const latestTimestamp = Math.max(...messages.map(m => m.timestamp || 0), 0);
+        if (latestTimestamp > lastReadTimestampRef.current) {
+          lastReadTimestampRef.current = latestTimestamp;
+          AsyncStorage.setItem(`chat_last_read_${gameId}`, latestTimestamp.toString());
         }
-        chatMsgCountRef.current = opponentMsgCount;
+        setUnreadChatCount(0);
       }
     });
     return () => unsubscribe();
   }, [gameId, isBotMode]);
+
+  // Update read status when chat is opened
+  useEffect(() => {
+    if (showChat && gameId) {
+      const markAsRead = async () => {
+        const now = Date.now(); // Fallback if no messages
+        lastReadTimestampRef.current = now;
+        await AsyncStorage.setItem(`chat_last_read_${gameId}`, now.toString());
+        setUnreadChatCount(0);
+      };
+      markAsRead();
+    }
+  }, [showChat, gameId]);
 
   // Active Game Tracking
   useEffect(() => {
